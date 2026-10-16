@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Local sensitive configuration (Use config.example.json as template)
+config.json
+
+# Local SQLite databases and temp files
+data/*.db
+data/*.db-journal
+data/*.db-shm
+data/*.db-wal
+data/inbox.json
+data/images/
+data/videos/
+
+# Logs and runtime dumps
+*.log
+daemon_err.log
+daemon_out.log
+.tmp/
+.env
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

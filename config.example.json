@@ -1,0 +1,30 @@
+{
+  "snowLuma": {
+    "wsUrl": "ws://127.0.0.1:3000/",
+    "token": "YOUR_ONEBOT_TOKEN_HERE",
+    "botQqId": 123456789,
+    "adminQqIds": [100000000],
+    "allowedGroupIds": [100000000]
+  },
+  "antigravity": {
+    "lsAddress": "http://127.0.0.1:6714",
+    "agentPreset": "tomoko",
+    "modelName": "gemini-2.5-pro",
+    "maxTurns": 30
+  },
+  "pricing": {
+    "exchangeRateUsdToCny": 7.25,
+    "models": {}
+  },
+  "daemon": {
+    "internalHttpPort": 34567,
+    "silentBufferLimit": 8,
+    "patrolMinMinutes": 3,
+    "patrolMaxMinutes": 8
+  },
+  "web": {
+    "port": 5120,
+    "adminToken": "hakimi-admin-token-2026",
+    "cors": true
+  }
+}

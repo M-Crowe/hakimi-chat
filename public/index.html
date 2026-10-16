@@ -1,0 +1,2653 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>哈基米聊天系统 | Hakimi Multi-Group Console</title>
+  <script src="/vendor/tailwind.min.js"></script>
+  <script>
+    if (typeof tailwind === 'undefined') {
+      document.write('<script src="https://cdn.tailwindcss.com"><\/script>');
+    }
+  </script>
+  <script>
+    function setupTailwindConfig() {
+      if (typeof tailwind !== 'undefined') {
+        tailwind.config = {
+          darkMode: 'class',
+          theme: {
+            extend: {
+              colors: {
+                brand: {
+                  50: '#fdf4ff',
+                  100: '#fae8ff',
+                  400: '#e879f9',
+                  500: '#d946ef',
+                  600: '#c026d3',
+                  900: '#701a75'
+                },
+                darkBg: '#0f172a',
+                darkCard: '#1e293b',
+                darkBorder: '#334155'
+              }
+            }
+          }
+        };
+      }
+    }
+    setupTailwindConfig();
+  </script>
+  <script src="/vendor/vue.global.prod.js"></script>
+  <script>
+    if (typeof Vue === 'undefined') {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/vue@3.4.21/dist/vue.global.prod.js"><\/script>');
+    }
+  </script>
+  <script src="/vendor/chart.umd.min.js"></script>
+  <script>
+    if (typeof Chart === 'undefined') {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"><\/script>');
+    }
+  </script>
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --chassis-bg: #07090f;
+      --panel-surface: #121824;
+      --panel-border: #222d42;
+      --panel-inset: #06090f;
+      --amber-phosphor: #f59e0b;
+      --cyan-phosphor: #06b6d4;
+      --green-phosphor: #10b981;
+      --red-phosphor: #ef4444;
+    }
+
+    body {
+      background-color: #07090f;
+      background-image: 
+        radial-gradient(circle at 50% 0%, rgba(20, 32, 55, 0.45) 0%, transparent 65%),
+        linear-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.012) 1px, transparent 1px);
+      background-size: 100% 100%, 32px 32px, 32px 32px;
+      color: #e2e8f0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    .font-telemetry {
+      font-family: 'Share Tech Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    .font-avionics {
+      font-family: 'Chakra Petch', system-ui, -apple-system, sans-serif;
+    }
+
+    /* Custom scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #06090f; }
+    ::-webkit-scrollbar-thumb { background: #1c2638; border-radius: 2px; border: 1px solid #2b3952; }
+    ::-webkit-scrollbar-thumb:hover { background: #2b3952; }
+
+    /* Physical Chassis Rack Panel */
+    .rack-card {
+      background: linear-gradient(180deg, #141b29 0%, #0d121c 100%);
+      border: 1px solid #253147;
+      border-top-color: #3b4d6e;
+      border-bottom-color: #06080e;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      position: relative;
+    }
+
+    /* Inset instrument slot */
+    .slot-inset {
+      background: #06090f;
+      border: 1px solid #1a2233;
+      border-top-color: #04060a;
+      border-bottom-color: #27344d;
+      box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.9), 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+
+    /* Machine Rivet / Hex Screw */
+    .screw {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #94a3b8 0%, #475569 65%, #0f172a 100%);
+      box-shadow: 0 1px 1px rgba(0,0,0,0.8), inset 0 0 1px rgba(255,255,255,0.6);
+      position: absolute;
+      pointer-events: none;
+      opacity: 0.75;
+    }
+    .screw-tl { top: 6px; left: 6px; }
+    .screw-tr { top: 6px; right: 6px; }
+    .screw-bl { bottom: 6px; left: 6px; }
+    .screw-br { bottom: 6px; right: 6px; }
+
+    /* Tactile push button */
+    .btn-tactile {
+      background: linear-gradient(180deg, #222c40 0%, #161d2b 100%);
+      border: 1px solid #364663;
+      border-top-color: #4b618a;
+      border-bottom-color: #0a0d14;
+      box-shadow: 0 3px 0 #07090e, 0 3px 6px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.18);
+      transition: all 0.08s ease;
+      user-select: none;
+    }
+    .btn-tactile:hover {
+      background: linear-gradient(180deg, #2b3750 0%, #1b2334 100%);
+      border-color: #45577a;
+    }
+    .btn-tactile:active {
+      transform: translateY(2px);
+      box-shadow: 0 1px 0 #07090e, 0 1px 3px rgba(0,0,0,0.7), inset 0 1px 3px rgba(0,0,0,0.6);
+    }
+
+    .btn-tactile-amber {
+      background: linear-gradient(180deg, #d97706 0%, #92400e 100%);
+      border: 1px solid #f59e0b;
+      border-top-color: #fde68a;
+      border-bottom-color: #451a03;
+      box-shadow: 0 3px 0 #301102, 0 4px 10px rgba(245, 158, 11, 0.35), inset 0 1px 0 rgba(255,255,255,0.3);
+      color: #ffffff;
+      transition: all 0.08s ease;
+    }
+    .btn-tactile-amber:hover {
+      background: linear-gradient(180deg, #f59e0b 0%, #b45309 100%);
+    }
+    .btn-tactile-amber:active {
+      transform: translateY(2px);
+      box-shadow: 0 1px 0 #301102, 0 1px 3px rgba(0,0,0,0.7), inset 0 1px 3px rgba(0,0,0,0.6);
+    }
+
+    .btn-tactile-cyan {
+      background: linear-gradient(180deg, #0891b2 0%, #0e7490 100%);
+      border: 1px solid #06b6d4;
+      border-top-color: #a5f3fc;
+      border-bottom-color: #164e63;
+      box-shadow: 0 3px 0 #082f49, 0 4px 10px rgba(6, 182, 212, 0.35), inset 0 1px 0 rgba(255,255,255,0.3);
+      color: #ffffff;
+      transition: all 0.08s ease;
+    }
+    .btn-tactile-cyan:hover {
+      background: linear-gradient(180deg, #06b6d4 0%, #0891b2 100%);
+    }
+    .btn-tactile-cyan:active {
+      transform: translateY(2px);
+      box-shadow: 0 1px 0 #082f49, 0 1px 3px rgba(0,0,0,0.7), inset 0 1px 3px rgba(0,0,0,0.6);
+    }
+
+    .btn-tactile-emerald {
+      background: linear-gradient(180deg, #059669 0%, #047857 100%);
+      border: 1px solid #10b981;
+      border-top-color: #a7f3d0;
+      border-bottom-color: #064e3b;
+      box-shadow: 0 3px 0 #022c22, 0 4px 10px rgba(16, 185, 129, 0.35), inset 0 1px 0 rgba(255,255,255,0.3);
+      color: #ffffff;
+      transition: all 0.08s ease;
+    }
+    .btn-tactile-emerald:hover {
+      background: linear-gradient(180deg, #10b981 0%, #059669 100%);
+    }
+    .btn-tactile-emerald:active {
+      transform: translateY(2px);
+      box-shadow: 0 1px 0 #022c22, 0 1px 3px rgba(0,0,0,0.7), inset 0 1px 3px rgba(0,0,0,0.6);
+    }
+
+    .btn-tactile-red {
+      background: linear-gradient(180deg, #dc2626 0%, #991b1b 100%);
+      border: 1px solid #ef4444;
+      border-top-color: #fca5a5;
+      border-bottom-color: #450a0a;
+      box-shadow: 0 3px 0 #280505, 0 4px 10px rgba(239, 68, 68, 0.35), inset 0 1px 0 rgba(255,255,255,0.3);
+      color: #ffffff;
+      transition: all 0.08s ease;
+    }
+    .btn-tactile-red:hover {
+      background: linear-gradient(180deg, #ef4444 0%, #b91c1c 100%);
+    }
+    .btn-tactile-red:active {
+      transform: translateY(2px);
+      box-shadow: 0 1px 0 #280505, 0 1px 3px rgba(0,0,0,0.7), inset 0 1px 3px rgba(0,0,0,0.6);
+    }
+
+    /* Stamped Mil-Spec Metal Label */
+    .mil-label {
+      font-family: 'Share Tech Mono', ui-monospace, monospace;
+      font-size: 0.625rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      background: #090c13;
+      border: 1px solid #1c2538;
+      border-radius: 2px;
+      padding: 1px 6px;
+      color: #64748b;
+      display: inline-flex;
+      align-items: center;
+      line-height: 1.2;
+    }
+
+    /* Phosphor Glows */
+    .glow-amber {
+      color: #fbbf24;
+      text-shadow: 0 0 8px rgba(245, 158, 11, 0.7), 0 0 16px rgba(245, 158, 11, 0.35);
+    }
+    .glow-cyan {
+      color: #22d3ee;
+      text-shadow: 0 0 8px rgba(6, 182, 212, 0.7), 0 0 16px rgba(6, 182, 212, 0.35);
+    }
+    .glow-green {
+      color: #34d399;
+      text-shadow: 0 0 8px rgba(16, 185, 129, 0.7), 0 0 16px rgba(16, 185, 129, 0.35);
+    }
+    .glow-red {
+      color: #f87171;
+      text-shadow: 0 0 8px rgba(239, 68, 68, 0.7), 0 0 16px rgba(239, 68, 68, 0.35);
+    }
+
+    /* Segmented LED VU Meter */
+    .meter-container {
+      height: 9px;
+      background: #06090e;
+      border: 1px solid #1a2233;
+      border-radius: 2px;
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.9);
+      padding: 1px;
+      overflow: hidden;
+      position: relative;
+    }
+    .meter-led-bar {
+      height: 100%;
+      border-radius: 1px;
+      background-image: repeating-linear-gradient(90deg, currentColor 0px, currentColor 5px, transparent 5px, transparent 7px);
+      transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* CRT scanline overlay effect for monitor logs */
+    .crt-monitor {
+      background: #06090f;
+      position: relative;
+      overflow: hidden;
+    }
+    .crt-monitor::before {
+      content: " ";
+      display: block;
+      position: absolute;
+      top: 0; left: 0; bottom: 0; right: 0;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+      z-index: 2;
+      background-size: 100% 3px, 6px 100%;
+      pointer-events: none;
+      opacity: 0.6;
+    }
+
+    /* Old glass style replacement */
+    .glass {
+      background: linear-gradient(180deg, #131926 0%, #0d121c 100%);
+      border: 1px solid #232d42;
+      border-top-color: #384766;
+      border-bottom-color: #070a10;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      position: relative;
+    }
+    .badge-glow {
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.4);
+    }
+  </style>
+
+</head>
+<body class="bg-[#07090f] text-slate-200 min-h-screen flex flex-col selection:bg-amber-500 selection:text-black">
+  <div id="app" class="flex flex-col flex-1 h-screen overflow-hidden">
+    
+    <!-- Top Navigation Bar -->
+    
+    <!-- Top Avionics Console Header (NASA Mission Control Bar) -->
+    <header class="h-16 border-b border-[#232d42] bg-[#0c101a] px-5 flex items-center justify-between shrink-0 z-20 shadow-xl relative">
+      <!-- Top Decorative Bevel Line -->
+      <div class="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#3b4d6e] to-transparent"></div>
+      
+      <div class="flex items-center space-x-3.5">
+        <!-- Telemetry Unit Badge -->
+        <div class="w-10 h-10 rounded-lg bg-gradient-to-b from-[#25324a] to-[#121824] border border-[#3b4d6e] flex items-center justify-center text-xl shadow-lg relative overflow-hidden group">
+          <div class="screw screw-tl"></div>
+          <div class="screw screw-br"></div>
+          <span class="filter drop-shadow-[0_0_6px_rgba(245,158,11,0.6)]">🛰️</span>
+        </div>
+        
+        <div>
+          <div class="flex items-center space-x-2">
+            <span class="font-avionics font-bold text-base tracking-wider text-white flex items-center space-x-1.5">
+              <span>HAKIMI MISSION CONTROL</span>
+            </span>
+            <span class="mil-label border-[#3b4d6e] text-amber-400 bg-amber-950/30 font-telemetry">AVIONICS // v2.0</span>
+          </div>
+          
+          <!-- Telemetry Status Lights -->
+          <div class="text-xs text-slate-400 flex items-center space-x-2 mt-0.5 font-telemetry">
+            <span class="flex items-center space-x-1">
+              <span class="text-slate-500">OPERATOR:</span>
+              <b class="glow-cyan font-bold">{{ activePersonaDisplayName }}</b>
+            </span>
+            <span class="text-slate-600">|</span>
+            <span class="flex items-center space-x-1.5">
+              <span class="w-2 h-2 rounded-full border border-black/50" :class="systemStatus.snowLuma?.connected ? 'bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse' : 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.8)]'"></span>
+              <span :class="systemStatus.snowLuma?.connected ? 'text-emerald-300' : 'text-red-400'">LINK-{{ systemStatus.snowLuma?.connected ? 'ONLINE' : 'OFFLINE' }}</span>
+            </span>
+            <span class="text-slate-600">|</span>
+            <!-- Antigravity Quota Status Pill -->
+            <button @click="currentTab = 'tokens'" title="点击查看 Antigravity 配额详情与用量看板"
+                    class="flex items-center space-x-1.5 px-2 py-0.5 rounded border transition slot-inset"
+                    :class="!quotaStatus.success ? 'text-slate-400 border-[#232d42] hover:border-slate-500' : (quotaStatus.isThrottled || quotaStatus.isExhausted ? 'text-red-300 border-red-500/50 bg-red-950/30' : (quotaStatus.lowestRemainingPercent < 40 ? 'text-amber-300 border-amber-500/50 bg-amber-950/30' : 'text-emerald-300 border-emerald-500/40 bg-emerald-950/20'))">
+              <span class="w-1.5 h-1.5 rounded-full" :class="!quotaStatus.success ? 'bg-slate-500' : (quotaStatus.isThrottled ? 'bg-red-400 animate-ping' : (quotaStatus.lowestRemainingPercent < 40 ? 'bg-amber-400' : 'bg-emerald-400'))"></span>
+              <span class="text-[11px] font-telemetry">QUOTA {{ !quotaStatus.success ? (quotaStatus.error ? 'OFFLINE' : 'PROBING') : (quotaStatus.lowestRemainingPercent !== undefined ? quotaStatus.lowestRemainingPercent + '%' : 'READY') }}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Physical Selector Rocker Tabs (CH-01 ~ CH-06) -->
+      <nav class="hidden md:flex items-center space-x-1.5 slot-inset p-1.5 rounded-lg border border-[#1e283c]">
+        <button v-for="tab in tabs" :key="tab.id" @click="currentTab = tab.id"
+          class="px-3 py-1.5 rounded text-xs font-avionics tracking-wider transition-all flex items-center space-x-1.5 user-select-none"
+          :class="currentTab === tab.id 
+            ? 'btn-tactile-amber text-white font-bold shadow-[0_2px_8px_rgba(245,158,11,0.4)]' 
+            : 'text-slate-400 hover:text-slate-200 hover:bg-[#182133]'">
+          <span class="font-telemetry text-[10px] opacity-80" v-if="tab.channel">[{{ tab.channel }}]</span>
+          <span>{{ tab.icon }}</span>
+          <span>{{ tab.name }}</span>
+        </button>
+      </nav>
+
+      <!-- Right Physical Controls -->
+      <div class="flex items-center space-x-3">
+        <button @click="openIntercomModal" class="px-3 py-1.5 rounded btn-tactile-cyan text-xs font-avionics tracking-wider flex items-center space-x-1.5">
+          <span>📢</span>
+          <span>COMM BROADCAST</span>
+        </button>
+        <div class="flex items-center space-x-2 border-l border-[#222d42] pl-3 font-telemetry">
+          <span class="w-2.5 h-2.5 rounded-full border border-black/60" :class="wsConnected ? 'bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.8)]' : 'bg-amber-400'"></span>
+          <span class="text-xs text-slate-400">{{ wsConnected ? 'TELEMETRY' : 'CONNECTING' }}</span>
+          <button @click="logout" title="断开控制台鉴权" class="text-slate-500 hover:text-red-400 text-sm ml-2 transition">🚪</button>
+        </div>
+      </div>
+    </header>
+
+
+    <!-- Mobile Nav Bar -->
+    <div class="md:hidden flex overflow-x-auto bg-slate-900 border-b border-darkBorder px-3 py-2 space-x-2 shrink-0">
+      <button v-for="tab in tabs" :key="tab.id" @click="currentTab = tab.id"
+        class="px-3 py-1 rounded-md text-xs whitespace-nowrap"
+        :class="currentTab === tab.id ? 'bg-brand-600 text-white' : 'text-slate-400 bg-slate-800'">
+        {{ tab.icon }} {{ tab.name }}
+      </button>
+    </div>
+
+    <!-- Main Container -->
+    <main class="flex-1 overflow-y-auto p-4 md:p-6 bg-[#0a0f1d]">
+      
+      <!-- 1. 通信信道机架分配 (Channel Rack Controller) -->
+      <div v-if="currentTab === 'groups'" class="max-w-7xl mx-auto space-y-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="flex items-center space-x-2">
+              <span class="mil-label border-[#3b4d6e] text-cyan-400 bg-cyan-950/40">RACK 01 // COMMS</span>
+              <h2 class="text-xl font-avionics font-bold text-white flex items-center space-x-2">
+                <span>📡</span>
+                <span>通信信道机架分配 (Communications Channel Rack)</span>
+              </h2>
+            </div>
+            <p class="text-xs text-slate-400 mt-1 font-telemetry">
+              授权频段白名单 • 个性化信道呼号 • 独立双态物理开关 • 触发模式拨码矩阵
+            </p>
+          </div>
+          <button @click="openAddGroupModal" class="btn-tactile-cyan px-4 py-2 rounded text-xs font-avionics tracking-wider flex items-center space-x-1.5">
+            <span>➕</span>
+            <span>INSTALL NEW CHANNEL</span>
+          </button>
+        </div>
+
+        <!-- Groups Cards Grid (Modular Rack Units) -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <div v-for="g in groups" :key="g.group_id" class="rack-card rounded-lg p-5 border border-[#253147] hover:border-[#3b4d6e] transition relative overflow-hidden group">
+            <div class="screw screw-tl"></div>
+            <div class="screw screw-tr"></div>
+            <div class="screw screw-bl"></div>
+            <div class="screw screw-br"></div>
+            
+            <div class="flex items-start justify-between relative z-10">
+              <div>
+                <div class="flex items-center space-x-2">
+                  <span class="mil-label text-slate-400">CH-{{ g.group_id.toString().slice(-4) }}</span>
+                  <h3 class="font-bold text-base text-white tracking-wide font-avionics">{{ g.group_name || ('信道 ' + g.group_id) }}</h3>
+                </div>
+                <div class="text-xs font-telemetry text-cyan-400/80 mt-1">FREQ ID: {{ g.group_id }}</div>
+              </div>
+              
+              <!-- Physical Rocker Power Switch -->
+              <button @click="toggleGroup(g)" :title="g.enabled ? '点击切断该信道' : '点击接通该信道'"
+                class="px-3 py-1 rounded text-xs font-avionics tracking-wider flex items-center space-x-1.5 transition"
+                :class="g.enabled ? 'btn-tactile-emerald text-white' : 'btn-tactile text-slate-400'">
+                <span class="w-1.5 h-1.5 rounded-full" :class="g.enabled ? 'bg-emerald-300 shadow-[0_0_6px_#10b981]' : 'bg-slate-500'"></span>
+                <span>{{ g.enabled ? 'ONLINE' : 'MUTED' }}</span>
+              </button>
+            </div>
+
+            <!-- Group Meta & Policy Inset Bay -->
+            <div class="mt-4 p-3 slot-inset rounded space-y-2 text-xs relative z-10 font-telemetry">
+              <div class="flex items-center justify-between text-slate-400">
+                <span class="text-slate-500">TRIGGER POLICY:</span>
+                <span class="px-2 py-0.5 rounded text-[11px] font-bold"
+                  :class="g.trigger_policy === 'strict' ? 'bg-amber-950/60 text-amber-300 border border-amber-600/40 glow-amber' : 'bg-indigo-950/60 text-indigo-300 border border-indigo-600/40 glow-cyan'">
+                  {{ g.trigger_policy === 'strict' ? '🔒 STRICT // 仅@/直问' : '📡 AMBIENT // 自主探头' }}
+                </span>
+              </div>
+              <div class="flex items-center justify-between text-slate-400">
+                <span class="text-slate-500">TELEMETRY COUNT:</span>
+                <span class="font-telemetry text-slate-200">{{ g.message_count || 0 }} RECS</span>
+              </div>
+              <div class="flex items-center justify-between text-slate-400">
+                <span class="text-slate-500">LAST CARRIER PING:</span>
+                <span class="font-telemetry text-slate-400 text-[11px]">{{ g.last_active || 'STANDBY' }}</span>
+              </div>
+            </div>
+
+            <!-- Hardware Action Lever Buttons -->
+            <div class="mt-4 pt-3 border-t border-[#1e283c] flex items-center justify-between relative z-10 font-avionics">
+              <button @click="openEditGroupModal(g)" class="btn-tactile px-2.5 py-1 rounded text-xs text-amber-400 hover:text-amber-300 flex items-center space-x-1">
+                <span>⚙️</span>
+                <span>CONFIG</span>
+              </button>
+              <button @click="resetGroupSession(g.group_id)" class="btn-tactile px-2.5 py-1 rounded text-xs text-slate-300 hover:text-cyan-400 flex items-center space-x-1">
+                <span>🔄</span>
+                <span>RESET SESSION</span>
+              </button>
+              <button @click="deleteGroup(g.group_id)" class="btn-tactile px-2.5 py-1 rounded text-xs text-red-400 hover:text-red-300 flex items-center space-x-1">
+                <span>🗑️</span>
+                <span>REMOVE</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. 神经矩阵调配舱 (Neuro-Persona Synthesis Bay) -->
+      <div v-if="currentTab === 'persona'" class="max-w-7xl mx-auto space-y-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="flex items-center space-x-2">
+              <span class="mil-label border-[#3b4d6e] text-purple-400 bg-purple-950/40">MATRIX 02 // COGNITION</span>
+              <h2 class="text-xl font-avionics font-bold text-white flex items-center space-x-2">
+                <span>🧬</span>
+                <span>神经矩阵与时空身位调配舱 (Neuro-Persona Bay)</span>
+              </h2>
+            </div>
+            <p class="text-xs text-slate-400 mt-1 font-telemetry">
+              全频段共鸣统一身位 • 物理卡带热插拔切换 • 人设卡实时编辑热重载 • 时空坐标与心境微调
+            </p>
+          </div>
+        </div>
+
+        <!-- Spatio-temporal Live Plate & Persona Switcher Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          <!-- Spatio-temporal Coordinates Plate -->
+          <div class="rack-card rounded-lg p-6 border border-[#253147] space-y-4">
+            <div class="screw screw-tl"></div>
+            <div class="screw screw-tr"></div>
+            <div class="screw screw-bl"></div>
+            <div class="screw screw-br"></div>
+
+            <div class="flex items-center justify-between relative z-10">
+              <div>
+                <div class="flex items-center space-x-2">
+                  <span class="mil-label text-cyan-400">COORDINATES</span>
+                  <h3 class="font-avionics font-bold text-white tracking-wide flex items-center space-x-1.5">
+                    <span>📍</span>
+                    <span>当前真实时空身位</span>
+                  </h3>
+                </div>
+                <div class="text-[11px] text-cyan-400 font-telemetry mt-1">
+                  CARTRIDGE: <span class="font-bold glow-cyan">{{ activePersonaDisplayName }}</span> ({{ activePersonaKey }})
+                </div>
+              </div>
+              <span class="mil-label border-amber-600/40 text-amber-300 bg-amber-950/40 glow-amber font-telemetry">
+                MOOD // {{ characterState.mood || 'NOMINAL' }}
+              </span>
+            </div>
+
+            <div class="slot-inset rounded-lg p-4 border border-[#222d42] space-y-3.5 relative z-10 text-xs font-telemetry">
+              <div>
+                <span class="text-slate-500 uppercase tracking-wider block text-[10px]">SPATIAL SECTOR (所在地点):</span>
+                <div class="text-slate-100 font-medium mt-0.5 glow-cyan">{{ characterState.location || '未知扇区' }}</div>
+              </div>
+              <div>
+                <span class="text-slate-500 uppercase tracking-wider block text-[10px]">PHYSICAL ACTION (当前活动):</span>
+                <div class="text-slate-200 mt-0.5">{{ characterState.action || '待命' }}</div>
+              </div>
+              <div>
+                <span class="text-slate-500 uppercase tracking-wider block text-[10px]">LOCAL SENSORY DETAILS (环境细节):</span>
+                <div class="text-slate-400 text-[11px] mt-0.5 italic leading-relaxed">{{ characterState.detail || '暂无环境细节' }}</div>
+              </div>
+              <div class="pt-2 border-t border-[#1a2233] text-[10px] text-slate-500 flex items-center justify-between">
+                <span>TELEMETRY SYNC:</span>
+                <span class="text-slate-400">{{ characterState.updated_at || 'JUST NOW' }}</span>
+              </div>
+            </div>
+
+            <!-- Manual Coordinate Calibration Form -->
+            <div class="space-y-3 pt-2 border-t border-[#232d42] relative z-10">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-avionics font-bold text-slate-300 tracking-wider">时空坐标手动校准 (CALIBRATION)</span>
+                <span class="text-[10px] text-slate-500 font-telemetry">OVERRIDE</span>
+              </div>
+              <div class="space-y-2 text-xs">
+                <div>
+                  <input v-model="editLocation" type="text" placeholder="更新所在地点..." class="slot-inset w-full rounded px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500 font-telemetry">
+                </div>
+                <div>
+                  <input v-model="editAction" type="text" placeholder="更新当前动作..." class="slot-inset w-full rounded px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500 font-telemetry">
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                  <input v-model="editMood" type="text" placeholder="当前心情..." class="slot-inset rounded px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500 font-telemetry">
+                  <button @click="updateLocationAction" class="btn-tactile-cyan rounded px-3 py-1.5 text-xs font-avionics tracking-wider">
+                    CALIBRATE // 校准
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Persona Cartridges Switcher (2 Columns) -->
+          <div class="lg:col-span-2 space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div v-for="p in personas" :key="p.name"
+                class="rack-card rounded-lg p-5 border transition cursor-pointer relative overflow-hidden group"
+                :class="activePersonaKey === p.name ? 'border-amber-500/80 shadow-[0_0_15px_rgba(245,158,11,0.2)]' : 'border-[#253147] hover:border-[#3b4d6e]'"
+                @click="switchPersona(p.name)">
+                <div class="screw screw-tl"></div>
+                <div class="screw screw-tr"></div>
+                <div class="screw screw-bl"></div>
+                <div class="screw screw-br"></div>
+                
+                <div class="flex items-start justify-between relative z-10">
+                  <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 rounded-lg flex items-center justify-center text-xl border"
+                         :class="activePersonaKey === p.name ? 'bg-amber-950/40 border-amber-500/60 shadow-[0_0_8px_rgba(245,158,11,0.5)]' : 'bg-[#0a0d14] border-[#222d42]'">
+                      {{ p.name === 'tomoko' ? '🎮' : (p.name === 'dragon_girl' ? '🐉' : (p.name === 'little_whale' ? '🐋' : '💄')) }}
+                    </div>
+                    <div>
+                      <h4 class="font-avionics font-bold text-base text-white tracking-wide">{{ p.displayName }}</h4>
+                      <div class="text-xs font-telemetry text-slate-500">ID: {{ p.name }}</div>
+                    </div>
+                  </div>
+                  <span class="mil-label" :class="activePersonaKey === p.name ? 'border-amber-500 text-amber-300 bg-amber-950/60 glow-amber' : 'text-slate-500'">
+                    {{ activePersonaKey === p.name ? 'ACTIVE CARTRIDGE' : 'STANDBY' }}
+                  </span>
+                </div>
+
+                <div class="mt-3.5 slot-inset rounded p-2.5 space-y-1.5 text-xs text-slate-300 relative z-10 font-telemetry">
+                  <div class="text-[11px] text-slate-400 truncate">
+                    <span class="text-slate-500">DEFAULT MOOD:</span> {{ p.defaultMood }}
+                  </div>
+                  <div class="text-[11px] text-slate-400 truncate">
+                    <span class="text-slate-500">DEFAULT ACTION:</span> {{ p.defaultAction }}
+                  </div>
+                </div>
+
+                <div class="mt-4 pt-3 border-t border-[#1e283c] flex items-center justify-between text-xs relative z-10">
+                  <button @click.stop="openEditPersonaCard(p)" class="btn-tactile px-2.5 py-1 rounded text-cyan-400 hover:text-cyan-300 flex items-center space-x-1 font-avionics">
+                    <span>📝</span>
+                    <span>EDIT CARTRIDGE CARD</span>
+                  </button>
+                  <span v-if="activePersonaKey === p.name" class="text-xs font-telemetry text-amber-400 font-bold glow-amber flex items-center space-x-1">
+                    <span>⚡</span>
+                    <span>ONLINE</span>
+                  </span>
+                  <span v-else class="text-xs font-telemetry text-slate-500">点击插槽热重载</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- In-page Live Persona Card Editor / Inspection -->
+            <div v-if="selectedEditPersona" class="rack-card rounded-lg p-5 border border-[#253147] space-y-3 relative">
+              <div class="screw screw-tl"></div>
+              <div class="screw screw-tr"></div>
+              <div class="flex items-center justify-between pb-3 border-b border-[#232d42]">
+                <div class="flex items-center space-x-2">
+                  <span class="mil-label border-[#3b4d6e] text-cyan-400">CARD INSPECTOR</span>
+                  <span class="text-xs font-avionics font-bold text-white tracking-wide">
+                    人设卡源码实时热重载: <b class="glow-cyan">{{ selectedEditPersona.displayName }}</b>
+                  </span>
+                </div>
+                <div class="flex items-center space-x-2">
+                  <button @click="savePersonaCard" class="btn-tactile-emerald px-3 py-1 rounded text-xs font-avionics tracking-wider">
+                    COMMIT & RELOAD // 保存重载
+                  </button>
+                  <button @click="selectedEditPersona = null" class="btn-tactile px-3 py-1 rounded text-xs text-slate-400">
+                    CLOSE
+                  </button>
+                </div>
+              </div>
+              <textarea v-model="personaCardContent" rows="10" class="slot-inset w-full rounded p-3 text-xs font-telemetry text-emerald-300/90 focus:outline-none focus:border-cyan-500 leading-relaxed"></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. 电传示波记录仪 (Telemetry Oscilloscope & Teleprinter) -->
+      <div v-if="currentTab === 'messages'" class="max-w-7xl mx-auto space-y-6 flex flex-col h-[calc(100vh-130px)]">
+        <div class="flex items-center justify-between shrink-0">
+          <div>
+            <div class="flex items-center space-x-2">
+              <span class="mil-label border-[#3b4d6e] text-cyan-400 bg-cyan-950/40">TELEMETRY 03 // BEAM</span>
+              <h2 class="text-xl font-avionics font-bold text-white flex items-center space-x-2">
+                <span>⚡</span>
+                <span>电传示波记录仪与智能推流 (Oscilloscope & Teleprinter)</span>
+              </h2>
+            </div>
+            <p class="text-xs text-slate-400 mt-1 font-telemetry">
+              WEBSOCKET 双向载波推流 • 社交动力学决策捕捉 (REPLY / INTERJECT / DIVE 潜水时长) • 15格电影胶片式 FIFO 图片仓
+            </p>
+          </div>
+          <div class="flex items-center space-x-2 font-telemetry">
+            <select v-model="messageFilterGroup" @change="loadHistoryMessages" class="slot-inset border border-[#2b3952] rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
+              <option value="">ALL CHANNELS & DIRECT</option>
+              <option v-for="g in groups" :key="g.group_id" :value="'group:' + g.group_id">{{ g.group_name || ('信道 ' + g.group_id) }}</option>
+            </select>
+            <button @click="clearLiveFeed" class="btn-tactile px-3 py-1.5 rounded text-xs font-avionics text-slate-300">
+              CLEAR SCREEN
+            </button>
+          </div>
+        </div>
+
+        <!-- Teleprinter Split View: Left Messages Stream, Right Subconscious Decisions -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0 overflow-hidden">
+          
+          <!-- Left: Teleprinter Tape Timeline (2 Columns) -->
+          <div class="lg:col-span-2 rack-card rounded-lg p-4 border border-[#253147] flex flex-col min-h-0 relative">
+            <div class="screw screw-tl"></div>
+            <div class="screw screw-tr"></div>
+            <div class="flex items-center justify-between pb-3 border-b border-[#232d42] shrink-0 relative z-10">
+              <span class="text-xs font-avionics font-bold text-slate-200 flex items-center space-x-1.5 tracking-wider">
+                <span>💬</span>
+                <span>TELEMETRY STREAM // 消息流实时电传记录</span>
+              </span>
+              <span class="mil-label text-slate-400">BUFFER: 100 RECORDS</span>
+            </div>
+
+            <!-- Messages Paper Roll -->
+            <div ref="chatScrollBox" @scroll="handleChatScroll" class="flex-1 overflow-y-auto py-3 space-y-3.5 pr-1 relative z-10">
+              <div v-if="filteredMessages.length === 0" class="h-full flex items-center justify-center text-slate-500 text-xs font-telemetry">
+                STANDBY: 电波信道静默中，群友发言或机器人回复将在此实时呈现...
+              </div>
+
+              <div v-for="(msg, idx) in filteredMessages" :key="idx"
+                class="rounded p-3 text-xs border transition flex items-start space-x-3"
+                :class="(msg.is_bot || msg.isBot) ? 'bg-amber-950/20 border-amber-600/40 ml-6' : 'slot-inset border-[#1c2538] mr-6'">
+                
+                <!-- Avatar -->
+                <div class="shrink-0 mt-0.5">
+                  <img :src="(msg.is_bot || msg.isBot) ? '/client/logo.png' : (getValidSenderId(msg) ? ('https://q1.qlogo.cn/g?b=qq&nk=' + getValidSenderId(msg) + '&s=100') : 'https://q1.qlogo.cn/g?b=qq&nk=0&s=100')"
+                       @error="onAvatarError"
+                       class="w-8 h-8 rounded border border-[#2b3952] object-cover bg-slate-900">
+                </div>
+
+                <!-- Message Content -->
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center justify-between font-telemetry">
+                    <div class="flex items-center space-x-2">
+                      <span class="font-bold font-avionics text-xs" :class="(msg.is_bot || msg.isBot) ? 'glow-amber font-bold' : 'text-slate-200'">
+                        {{ msg.sender_name || (msg.is_bot || msg.isBot ? activePersonaDisplayName : ('USER ' + getValidSenderId(msg))) }}
+                      </span>
+                      <span v-if="msg.group_id" class="mil-label text-slate-400 text-[9px]">CH-{{ msg.group_id }}</span>
+                      <span v-if="msg.is_bot || msg.isBot" class="mil-label text-amber-300 border-amber-600/50 text-[9px]">AI CARRIER</span>
+                    </div>
+                    <span class="text-[10px] text-slate-500">{{ msg.created_at || 'RECENT' }}</span>
+                  </div>
+
+                  <div class="mt-1.5 text-xs text-slate-200 leading-relaxed whitespace-pre-wrap font-sans break-words">{{ msg.raw_message || msg.content }}</div>
+
+                  <!-- Inline Images in Message -->
+                  <div v-if="msg.images && parseImages(msg.images).length > 0" class="mt-2 flex flex-wrap gap-2">
+                    <img v-for="(img, imgIdx) in parseImages(msg.images)" :key="imgIdx"
+                         :src="img"
+                         @click="previewImage(img)"
+                         class="max-w-[120px] max-h-[120px] rounded border border-[#2b3952] hover:opacity-80 transition cursor-pointer object-cover">
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Scroll to bottom notification badge -->
+            <div v-if="hasNewMessagesBelow" class="absolute bottom-16 right-6 z-20">
+              <button @click="scrollToBottom(true)" class="btn-tactile-amber px-3 py-1.5 rounded text-xs font-avionics tracking-wider shadow-lg flex items-center space-x-1.5">
+                <span>⬇️</span>
+                <span>NEW TELEMETRY ARRIVED</span>
+              </button>
+            </div>
+
+            <!-- Quick Broadcast Input Bar -->
+            <div class="pt-3 border-t border-[#232d42] flex items-center space-x-2 shrink-0 relative z-10">
+              <input v-model="quickMessageText" @keyup.enter="sendQuickMessage" type="text" placeholder="以当前人设广播消息至当前选中信道..." class="slot-inset flex-1 rounded px-3 py-2 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-amber-500 font-telemetry">
+              <button @click="sendQuickMessage" class="btn-tactile-amber px-4 py-2 rounded text-xs font-avionics tracking-wider">
+                TRANSMIT // 发送
+              </button>
+            </div>
+          </div>
+
+          <!-- Right: Social Dynamics Log & 15-cell Film Carousel Rack -->
+          <div class="space-y-4 flex flex-col min-h-0 overflow-y-auto">
+            
+            <!-- 15-cell Film FIFO Cache Rack -->
+            <div class="rack-card rounded-lg p-4 border border-[#253147] relative">
+              <div class="screw screw-tl"></div>
+              <div class="screw screw-tr"></div>
+              <div class="flex items-center justify-between pb-2 border-b border-[#232d42] relative z-10">
+                <span class="text-xs font-avionics font-bold text-slate-200 tracking-wider">
+                  🎞️ FIFO 图像胶片仓 (FILM CAROUSEL)
+                </span>
+                <span class="mil-label text-cyan-400 font-telemetry">{{ systemStatus.cachedImageCount || 0 }} / 15 SLOTS</span>
+              </div>
+              <div class="grid grid-cols-5 gap-1.5 mt-3 relative z-10 font-telemetry">
+                <div v-for="slot in 15" :key="slot" class="slot-inset rounded p-1 text-center border"
+                     :class="slot <= (systemStatus.cachedImageCount || 0) ? 'border-cyan-500/50 text-cyan-300' : 'border-[#1a2233] text-slate-600'">
+                  <div class="text-[9px] font-bold">#{{ slot.toString().padStart(2, '0') }}</div>
+                  <div class="w-1.5 h-1.5 rounded-full mx-auto mt-0.5"
+                       :class="slot <= (systemStatus.cachedImageCount || 0) ? 'bg-cyan-400 shadow-[0_0_6px_#06b6d4]' : 'bg-slate-800'"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Subconscious Social Decision Telemetry -->
+            <div class="rack-card rounded-lg p-4 border border-[#253147] flex-1 flex flex-col min-h-0 relative">
+              <div class="screw screw-tl"></div>
+              <div class="screw screw-tr"></div>
+              <div class="flex items-center justify-between pb-2 border-b border-[#232d42] relative z-10 shrink-0">
+                <span class="text-xs font-avionics font-bold text-slate-200 tracking-wider">
+                  🧠 潜意识动力学决策 (DECISIONS)
+                </span>
+                <span class="mil-label text-slate-400 font-telemetry">REALTIME</span>
+              </div>
+
+              <div class="flex-1 overflow-y-auto py-2 space-y-2 relative z-10 font-telemetry">
+                <div v-if="socialDecisions.length === 0" class="text-slate-500 text-xs text-center py-6">
+                  等待最新社交交互决策日志...
+                </div>
+
+                <div v-for="(dec, idx) in socialDecisions" :key="idx" class="slot-inset rounded p-2.5 space-y-1.5 border border-[#1a2233]">
+                  <div class="flex items-center justify-between">
+                    <span class="mil-label text-amber-300 border-amber-600/40">CH-{{ dec.groupId || 'DIRECT' }}</span>
+                    <span class="text-[10px] font-bold font-avionics px-2 py-0.5 rounded"
+                          :class="dec.action === 'REPLY' ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-500/50 glow-green' : (dec.action === 'DIVE' ? 'bg-amber-950/60 text-amber-300 border border-amber-500/50 glow-amber' : 'bg-cyan-950/60 text-cyan-300 border border-cyan-500/50 glow-cyan')">
+                      ACTION: {{ dec.action }}
+                    </span>
+                  </div>
+                  <div class="text-[11px] text-slate-300 font-sans leading-relaxed">
+                    {{ dec.rawDecision || dec.reasoning }}
+                  </div>
+                  <div class="text-[9px] text-slate-500 flex items-center justify-between pt-1 border-t border-[#1a2233]">
+                    <span>T-STAMP:</span>
+                    <span>{{ dec.timestamp }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. 晶体数据与记忆资产归档柜 (Holographic Crystal Vault) -->
+      <div v-if="currentTab === 'vault'" class="max-w-7xl mx-auto space-y-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="flex items-center space-x-2">
+              <span class="mil-label border-[#3b4d6e] text-pink-400 bg-pink-950/40">VAULT 04 // MEMORY</span>
+              <h2 class="text-xl font-avionics font-bold text-white flex items-center space-x-2">
+                <span>💎</span>
+                <span>晶体数据与长期记忆归档柜 (Holographic Crystal Vault)</span>
+              </h2>
+            </div>
+            <p class="text-xs text-slate-400 mt-1 font-telemetry">
+              用户好感阶梯排行榜 • 跨会话长期记忆切片快照 • 群聊顺风车网络黑话学习库
+            </p>
+          </div>
+          <div class="flex items-center space-x-2 font-telemetry">
+            <button v-for="sub in vaultTabs" :key="sub.id" @click="vaultSubTab = sub.id"
+              class="px-3.5 py-1.5 rounded text-xs font-avionics tracking-wider transition"
+              :class="vaultSubTab === sub.id ? 'btn-tactile-amber text-white font-bold' : 'btn-tactile text-slate-400'">
+              {{ sub.name }}
+            </button>
+          </div>
+        </div>
+
+        <!-- Subtab 1: User Affinity Leaderboard Ledger -->
+        <div v-if="vaultSubTab === 'affinity'" class="space-y-4">
+          <div class="rack-card rounded-lg p-4 border border-[#253147] flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center space-x-3">
+              <input v-model="affinitySearch" @input="loadAffinityList(1)" type="text" placeholder="搜索 QQ 号、等级阶段、印象理由..." class="slot-inset rounded px-3 py-1.5 text-xs text-white placeholder-slate-500 w-64 focus:outline-none focus:border-amber-500 font-telemetry">
+              <div class="flex items-center space-x-2 text-xs text-slate-400 font-telemetry">
+                <span>ORDER:</span>
+                <select v-model="affinitySort" @change="loadAffinityList(1)" class="slot-inset border border-[#2b3952] rounded px-2.5 py-1 text-xs text-slate-200 focus:outline-none">
+                  <option value="points_desc">POINTS: HIGH TO LOW</option>
+                  <option value="points_asc">POINTS: LOW TO HIGH</option>
+                  <option value="interact_desc">LATEST INTERACTION</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="flex items-center space-x-2 font-avionics">
+              <button @click="cleanTestAffinityData" class="btn-tactile px-3 py-1.5 rounded text-xs text-cyan-300 flex items-center space-x-1.5">
+                <span>🧹</span>
+                <span>PURGE TEST RECORDS</span>
+              </button>
+              <button @click="clearAllAffinityData" class="btn-tactile-red px-3 py-1.5 rounded text-xs flex items-center space-x-1">
+                <span>🗑️</span>
+                <span>PURGE ALL</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Affinity Ledger Table -->
+          <div class="rack-card rounded-lg border border-[#253147] overflow-hidden shadow-2xl">
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs font-telemetry">
+                <thead class="bg-[#080b12] text-slate-400 uppercase border-b border-[#232d42] text-[10px]">
+                  <tr>
+                    <th class="p-3.5 pl-5">USER TELEMETRY</th>
+                    <th class="p-3.5">POINTS</th>
+                    <th class="p-3.5">TIER LEVEL</th>
+                    <th class="p-3.5">RECENT REASONING NOTE</th>
+                    <th class="p-3.5">LAST PING</th>
+                    <th class="p-3.5 text-right pr-5">CALIBRATION</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-[#1a2233] text-slate-300">
+                  <tr v-for="user in affinities" :key="user.user_id" class="hover:bg-[#131b29] transition">
+                    <td class="p-3.5 pl-5 flex items-center space-x-3">
+                      <img :src="'https://q1.qlogo.cn/g?b=qq&nk=' + user.user_id + '&s=100'"
+                           @error="onAvatarError"
+                           class="w-7 h-7 rounded border border-[#2b3952] object-cover bg-slate-900">
+                      <div>
+                        <div class="font-bold font-avionics text-white">{{ user.user_name || ('QQ ' + user.user_id) }}</div>
+                        <div class="text-[10px] text-slate-500 font-telemetry">ID: {{ user.user_id }}</div>
+                      </div>
+                    </td>
+                    <td class="p-3.5">
+                      <span class="font-bold text-sm font-telemetry"
+                            :class="user.affinity_points >= 80 ? 'glow-green' : (user.affinity_points >= 40 ? 'glow-cyan' : (user.affinity_points < 0 ? 'glow-red' : 'glow-amber'))">
+                        {{ user.affinity_points }}
+                      </span>
+                    </td>
+                    <td class="p-3.5">
+                      <span class="mil-label font-avionics font-bold"
+                            :class="user.affinity_points >= 80 ? 'border-emerald-500 text-emerald-300' : 'border-slate-700 text-slate-300'">
+                        {{ user.level_name }}
+                      </span>
+                    </td>
+                    <td class="p-3.5 text-slate-400 max-w-xs truncate font-sans text-xs">
+                      {{ user.last_reason || '暂无变动缘由' }}
+                    </td>
+                    <td class="p-3.5 text-slate-500 font-telemetry text-[11px] whitespace-nowrap">
+                      {{ user.last_interact || 'RECENT' }}
+                    </td>
+                    <td class="p-3.5 text-right pr-5">
+                      <button @click="openEditAffinityModal(user)" class="btn-tactile px-2.5 py-1 rounded text-xs text-amber-400 hover:text-amber-300 font-avionics">
+                        CALIBRATE // 微调
+                      </button>
+                    </td>
+                  </tr>
+                  <tr v-if="!affinities || affinities.length === 0">
+                    <td colspan="6" class="p-6 text-center text-slate-500 text-xs">
+                      暂无好感度记录...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Subtab 2: Memory Snapshots -->
+        <div v-if="vaultSubTab === 'memory'" class="space-y-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div v-for="mem in memories" :key="mem.id" class="rack-card rounded-lg p-4 border border-[#253147] space-y-2 relative">
+              <div class="screw screw-tl"></div>
+              <div class="screw screw-tr"></div>
+              <div class="flex items-center justify-between text-xs relative z-10 font-telemetry">
+                <span class="mil-label border-[#3b4d6e] text-cyan-400">CH-{{ mem.session_key }}</span>
+                <span class="text-[10px] text-slate-500">{{ mem.created_at }}</span>
+              </div>
+              <div class="slot-inset rounded p-3 text-xs text-slate-200 font-sans leading-relaxed relative z-10">
+                {{ mem.content }}
+              </div>
+            </div>
+            <div v-if="!memories || memories.length === 0" class="col-span-3 text-center py-8 text-slate-500 text-xs rack-card rounded-lg">
+              暂无记忆切片快照，模型生成 &lt;MEMORY_SNAPSHOT&gt; 时将自动归档在此...
+            </div>
+          </div>
+        </div>
+
+        <!-- Subtab 3: Slangs Dictionary -->
+        <div v-if="vaultSubTab === 'slangs'" class="space-y-4">
+          <div class="rack-card rounded-lg p-4 border border-[#253147] flex items-center justify-between">
+            <input v-model="slangSearch" @input="loadSlangList" type="text" placeholder="搜索网络黑话与术语..." class="slot-inset rounded px-3 py-1.5 text-xs text-white placeholder-slate-500 w-64 focus:outline-none focus:border-amber-500 font-telemetry">
+            <button @click="openAddSlangModal" class="btn-tactile-cyan px-3.5 py-1.5 rounded text-xs font-avionics tracking-wider">
+              ➕ LEARN NEW SLANG // 录入黑话
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div v-for="s in slangs" :key="s.id" class="rack-card rounded-lg p-4 border border-[#253147] space-y-2 relative">
+              <div class="screw screw-tl"></div>
+              <div class="screw screw-tr"></div>
+              <div class="flex items-center justify-between relative z-10 font-telemetry">
+                <span class="font-bold text-sm text-amber-300 font-avionics glow-amber">"{{ s.word }}"</span>
+                <span class="mil-label text-slate-400">HEARD {{ s.use_count || 1 }}X</span>
+              </div>
+              <div class="slot-inset rounded p-2.5 text-xs text-slate-300 font-sans leading-relaxed relative z-10">
+                {{ s.meaning }}
+              </div>
+            </div>
+            <div v-if="!slangs || slangs.length === 0" class="col-span-3 text-center py-8 text-slate-500 text-xs rack-card rounded-lg">
+              暂无黑话记录，群聊中学习到新词时将自动沉淀...
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. Token 消耗与用量监测 (Token Monitoring) -->
+      <div v-if="currentTab === 'tokens'" class="max-w-7xl mx-auto space-y-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="flex items-center space-x-2">
+              <span class="mil-label border-[#3b4d6e] text-amber-400 bg-amber-950/40">REACTOR 05 // ENERGY</span>
+              <h2 class="text-xl font-avionics font-bold text-white flex items-center space-x-2">
+                <span>☢️</span>
+                <span>反应堆核心配额与流量监测 (Reactor Quota & Telemetry)</span>
+              </h2>
+            </div>
+            <p class="text-xs text-slate-400 mt-1 font-telemetry">
+              ANTIGRAVITY 环回配额防爆看板 • 深度思考推理 TOKEN • 瞬时生成速率 (TOK/S) • 多币种成本核算 (¥ / $)
+            </p>
+          </div>
+          <div class="flex items-center space-x-2 font-telemetry">
+            <span class="text-slate-500 text-xs">WINDOW:</span>
+            <select v-model="tokenDays" @change="loadTokenStats" class="slot-inset border border-[#2b3952] rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500 font-telemetry">
+              <option :value="7">PAST 07 DAYS</option>
+              <option :value="14">PAST 14 DAYS</option>
+              <option :value="30">PAST 30 DAYS</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Top Pinned Card: Antigravity 配额防爆健康看板 (Nuclear Core Telemetry Unit) -->
+        <div class="rack-card rounded-lg p-5 border border-[#253147] shadow-2xl relative overflow-hidden">
+          <div class="screw screw-tl"></div>
+          <div class="screw screw-tr"></div>
+          <div class="screw screw-bl"></div>
+          <div class="screw screw-br"></div>
+
+          <div class="flex flex-wrap items-center justify-between gap-4 mb-4 relative z-10">
+            <div class="flex items-center space-x-3.5">
+              <div class="w-11 h-11 rounded-lg bg-gradient-to-b from-[#25324a] to-[#101622] border border-[#3b4d6e] flex items-center justify-center text-2xl shadow-lg relative">
+                <span class="filter drop-shadow-[0_0_8px_rgba(6,182,212,0.8)]">🛡️</span>
+              </div>
+              <div>
+                <div class="flex items-center space-x-2.5">
+                  <h3 class="text-base font-avionics font-bold text-white tracking-wide">ANTIGRAVITY 反应堆配额防爆看板</h3>
+                  <span class="mil-label font-telemetry font-bold"
+                        :class="!quotaStatus.success ? 'bg-slate-900 text-slate-400 border-slate-700' : (quotaStatus.isThrottled || quotaStatus.isExhausted ? 'bg-red-950/60 text-red-300 border-red-500/60 glow-red' : (quotaStatus.lowestRemainingPercent < 40 ? 'bg-amber-950/60 text-amber-300 border-amber-500/60 glow-amber' : 'bg-emerald-950/60 text-emerald-300 border-emerald-500/60 glow-green'))">
+                    {{ !quotaStatus.success ? (quotaStatus.error ? '⚪ PROBE OFFLINE' : '⚪ INITIALIZING') : (quotaStatus.isExhausted ? '🔴 CORE EXHAUSTED' : (quotaStatus.isThrottled ? '⚠️ CIRCUIT BREAKER ACTIVE' : '🟢 REACTOR NOMINAL')) }}
+                  </span>
+                  <span v-if="quotaStatus.userTier?.name" class="mil-label border-indigo-500/40 text-indigo-300 bg-indigo-950/40 font-telemetry">
+                    TIER: {{ quotaStatus.userTier.name }}
+                  </span>
+                </div>
+                <p class="text-xs text-slate-400 mt-1 font-telemetry">
+                  LOCAL CONNECT-RPC 环回探针 // 5H 峰值与周额度自动校准 // 余量 &lt; 10% 智能熔断防封禁
+                </p>
+              </div>
+            </div>
+
+            <div class="flex items-center space-x-4 relative z-10 font-telemetry">
+              <div class="text-right slot-inset px-3.5 py-1.5 rounded border border-[#253147]">
+                <div class="text-[10px] text-slate-500 uppercase tracking-wider">LOWEST WINDOW</div>
+                <div class="text-xl font-bold font-telemetry" :class="!quotaStatus.success ? 'text-slate-500' : (quotaStatus.lowestRemainingPercent < 15 ? 'glow-red' : (quotaStatus.lowestRemainingPercent < 50 ? 'glow-amber' : 'glow-cyan'))">
+                  {{ quotaStatus.success && quotaStatus.lowestRemainingPercent !== undefined ? quotaStatus.lowestRemainingPercent + '%' : '--' }}
+                </div>
+              </div>
+              <button @click="loadQuotaStatus(true)" :disabled="isRefreshingQuota"
+                      class="btn-tactile px-3.5 py-2 rounded text-xs font-avionics tracking-wider flex items-center space-x-1.5 disabled:opacity-50">
+                <span :class="isRefreshingQuota ? 'animate-spin' : ''">🔄</span>
+                <span>{{ isRefreshingQuota ? 'SAMPLING...' : 'PROBE REFRESH' }}</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Quota Model Groups Grid with Segmented LED Meters -->
+          <div v-if="quotaStatus.groups && quotaStatus.groups.length > 0" class="grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10">
+            <div v-for="grp in quotaStatus.groups" :key="grp.displayName" class="slot-inset rounded-lg p-3.5 border border-[#232d42] space-y-3">
+              <div class="flex items-center justify-between">
+                <div class="font-avionics font-bold text-xs text-slate-200 flex items-center space-x-2">
+                  <span class="text-amber-400">{{ grp.displayName.includes('Gemini') ? '♊' : '🧠' }}</span>
+                  <span class="tracking-wide">{{ grp.displayName }}</span>
+                </div>
+                <span class="mil-label text-slate-500 truncate max-w-[220px]" :title="grp.description">{{ grp.description }}</span>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3 pt-1">
+                <!-- 5-Hour Window Segmented Meter -->
+                <div v-if="grp.fiveHour" class="bg-[#05070d] rounded p-2.5 border border-[#1a2336] space-y-2">
+                  <div class="flex items-center justify-between text-[11px] font-telemetry">
+                    <span class="text-slate-400 font-medium">5H SLIDING WINDOW</span>
+                    <span class="font-bold text-xs" :class="grp.fiveHour.remainingPercent < 15 ? 'glow-red' : (grp.fiveHour.remainingPercent < 50 ? 'glow-amber' : 'glow-cyan')">
+                      {{ grp.fiveHour.remainingPercent }}%
+                    </span>
+                  </div>
+                  <!-- Segmented LED VU Bar -->
+                  <div class="meter-container w-full">
+                    <div class="meter-led-bar"
+                         :class="grp.fiveHour.remainingPercent < 15 ? 'meter-fill-red text-red-500' : (grp.fiveHour.remainingPercent < 50 ? 'meter-fill-amber text-amber-500' : 'meter-fill-cyan text-cyan-400')"
+                         :style="{ width: grp.fiveHour.remainingPercent + '%' }"></div>
+                  </div>
+                  <div class="text-[10px] text-slate-500 flex items-center justify-between pt-0.5 font-telemetry">
+                    <span>RESET T-MINUS:</span>
+                    <span class="text-amber-300/90 font-bold glow-amber">{{ grp.fiveHour.resetCountdown || 'CALCULATING' }}</span>
+                  </div>
+                </div>
+
+                <!-- Weekly Window Segmented Meter -->
+                <div v-if="grp.weekly" class="bg-[#05070d] rounded p-2.5 border border-[#1a2336] space-y-2">
+                  <div class="flex items-center justify-between text-[11px] font-telemetry">
+                    <span class="text-slate-400 font-medium">WEEKLY CYCLE LIMIT</span>
+                    <span class="font-bold text-xs" :class="grp.weekly.remainingPercent < 15 ? 'glow-red' : (grp.weekly.remainingPercent < 50 ? 'glow-amber' : 'glow-green')">
+                      {{ grp.weekly.remainingPercent }}%
+                    </span>
+                  </div>
+                  <!-- Segmented LED VU Bar -->
+                  <div class="meter-container w-full">
+                    <div class="meter-led-bar"
+                         :class="grp.weekly.remainingPercent < 15 ? 'meter-fill-red text-red-500' : (grp.weekly.remainingPercent < 50 ? 'meter-fill-amber text-amber-500' : 'meter-fill-green text-emerald-400')"
+                         :style="{ width: grp.weekly.remainingPercent + '%' }"></div>
+                  </div>
+                  <div class="text-[10px] text-slate-500 flex items-center justify-between pt-0.5 font-telemetry">
+                    <span>CYCLE RECOVERY:</span>
+                    <span class="text-emerald-300/90 font-bold glow-green">{{ grp.weekly.resetCountdown || 'CALCULATING' }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div v-else class="text-xs text-slate-400 text-center py-4 slot-inset rounded-lg border border-[#232d42] font-telemetry relative z-10">
+            <div v-if="!quotaStatus.success" class="space-y-1">
+              <div class="text-amber-400/90 font-medium font-avionics tracking-wider">⚠️ ANTIGRAVITY LANGUAGE SERVER PROBE OFFLINE</div>
+              <div class="text-[11px] text-slate-500">
+                请确认 Antigravity IDE 或 Language Server 正在本机运行。探针会自动嗅探进程端口并探测配额。
+              </div>
+            </div>
+            <div v-else>暂无配额分组信息或正在重载模型字典...</div>
+          </div>
+        </div>
+
+        <!-- Token Usage Telemetry Gauges Grid (8 Inset Gauges) -->
+        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+          <!-- Total Tokens -->
+          <div class="rack-card rounded-lg p-3 border border-[#253147] relative">
+            <div class="mil-label text-slate-500">TOTAL FLUX</div>
+            <div class="text-xl font-bold font-telemetry glow-amber mt-1">{{ tokenStats.summary?.total_tokens || 0 }}</div>
+            <div class="text-[10px] text-slate-500 font-telemetry mt-1">P: {{ tokenStats.summary?.total_prompt_tokens || 0 }} | R: {{ tokenStats.summary?.total_reply_tokens || 0 }}</div>
+          </div>
+
+          <!-- Reasoning Tokens -->
+          <div class="rack-card rounded-lg p-3 border border-[#253147] relative">
+            <div class="mil-label text-purple-400">REASONING</div>
+            <div class="text-xl font-bold font-telemetry text-purple-300 mt-1" style="text-shadow: 0 0 8px rgba(192,132,252,0.6)">{{ tokenStats.summary?.total_reasoning_tokens || 0 }}</div>
+            <div class="text-[10px] text-slate-500 font-telemetry mt-1">
+              占比: {{ tokenStats.summary?.total_reply_tokens ? ((tokenStats.summary.total_reasoning_tokens || 0) / tokenStats.summary.total_reply_tokens * 100).toFixed(1) : 0 }}%
+            </div>
+          </div>
+
+          <!-- Total Turns -->
+          <div class="rack-card rounded-lg p-3 border border-[#253147] relative">
+            <div class="mil-label text-cyan-400">CARRIER TURNS</div>
+            <div class="text-xl font-bold font-telemetry glow-cyan mt-1">{{ tokenStats.summary?.total_turns || 0 }}</div>
+            <div class="text-[10px] text-slate-500 font-telemetry mt-1">有效交互轮数</div>
+          </div>
+
+          <!-- Throughput Speed -->
+          <div class="rack-card rounded-lg p-3 border border-[#253147] relative">
+            <div class="mil-label text-cyan-400">SPEED (TOK/S)</div>
+            <div class="text-xl font-bold font-telemetry glow-cyan mt-1">{{ tokenStats.summary?.avg_throughput_tps || '0.0' }}</div>
+            <div class="text-[10px] text-slate-500 font-telemetry mt-1">平均吐字速率</div>
+          </div>
+
+          <!-- Estimated Cost CNY -->
+          <div class="rack-card rounded-lg p-3 border border-[#253147] relative">
+            <div class="mil-label text-amber-400">COST (CNY)</div>
+            <div class="text-xl font-bold font-telemetry glow-amber mt-1">¥{{ tokenStats.summary?.total_cost_cny !== undefined ? Number(tokenStats.summary.total_cost_cny).toFixed(4) : '0.0000' }}</div>
+            <div class="text-[10px] text-slate-500 font-telemetry mt-1">${{ tokenStats.summary?.total_cost_usd !== undefined ? Number(tokenStats.summary.total_cost_usd).toFixed(4) : '0.0000' }}</div>
+          </div>
+
+          <!-- Total Chars -->
+          <div class="rack-card rounded-lg p-3 border border-[#253147] relative">
+            <div class="mil-label text-emerald-400">TOTAL CHARS</div>
+            <div class="text-xl font-bold font-telemetry glow-green mt-1">{{ (tokenStats.summary?.total_prompt_chars || 0) + (tokenStats.summary?.total_reply_chars || 0) }}</div>
+            <div class="text-[10px] text-slate-500 font-telemetry mt-1">P: {{ tokenStats.summary?.total_prompt_chars || 0 }} | R: {{ tokenStats.summary?.total_reply_chars || 0 }}</div>
+          </div>
+
+          <!-- Cache Hit Rate -->
+          <div class="rack-card rounded-lg p-3 border border-[#253147] relative">
+            <div class="mil-label text-cyan-400">KV CACHE HIT</div>
+            <div class="text-xl font-bold font-telemetry glow-cyan mt-1">
+              {{ tokenStats.summary?.avg_cache_hit_percent !== undefined ? tokenStats.summary?.avg_cache_hit_percent : ((tokenStats.summary?.avg_cache_hit_rate || 0) * (tokenStats.summary?.avg_cache_hit_rate <= 1 ? 100 : 1)).toFixed(1) }}%
+            </div>
+            <div class="text-[10px] text-slate-500 font-telemetry mt-1">上下文复用率</div>
+          </div>
+
+          <!-- Cache Saved Tokens -->
+          <div class="rack-card rounded-lg p-3 border border-[#253147] relative">
+            <div class="mil-label text-emerald-400">SAVED TOKENS</div>
+            <div class="text-xl font-bold font-telemetry glow-green mt-1">
+              {{ tokenStats.summary?.total_cached_saved || tokenStats.summary?.total_cached_tokens || 0 }}
+            </div>
+            <div class="text-[10px] text-slate-500 font-telemetry mt-1">免重复计算</div>
+          </div>
+        </div>
+
+        <!-- Charts Grid (Telemetry Trends) -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <!-- Line Chart: Daily Token Trend -->
+          <div class="lg:col-span-2 rack-card rounded-lg p-5 border border-[#253147]">
+            <div class="screw screw-tl"></div>
+            <div class="screw screw-tr"></div>
+            <div class="flex items-center justify-between pb-3 border-b border-[#232d42]">
+              <span class="text-xs font-avionics font-bold text-slate-200 tracking-wider flex items-center space-x-1.5">
+                <span>📈</span>
+                <span>每日 TOKEN 消耗走势 (DAILY FLUX TELEMETRY)</span>
+              </span>
+              <span class="mil-label text-slate-400">UNIT: TOKENS</span>
+            </div>
+            <div class="h-64 mt-3">
+              <canvas id="tokenTrendChart"></canvas>
+            </div>
+          </div>
+
+          <!-- Doughnut Chart: Persona Distribution -->
+          <div class="rack-card rounded-lg p-5 border border-[#253147]">
+            <div class="screw screw-tl"></div>
+            <div class="screw screw-tr"></div>
+            <div class="flex items-center justify-between pb-3 border-b border-[#232d42]">
+              <span class="text-xs font-avionics font-bold text-slate-200 tracking-wider flex items-center space-x-1.5">
+                <span>🎭</span>
+                <span>人设消耗配额分布 (PERSONA LOAD)</span>
+              </span>
+            </div>
+            <div class="h-64 mt-3 flex items-center justify-center">
+              <canvas id="tokenPersonaChart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recent Token Ledger Table -->
+        <div class="rack-card rounded-lg border border-[#253147] overflow-hidden shadow-2xl">
+          <div class="p-4 border-b border-[#232d42] flex items-center justify-between bg-[#0e1420]">
+            <div class="flex items-center space-x-2">
+              <span class="mil-label border-[#3b4d6e] text-cyan-400">LEDGER</span>
+              <h3 class="text-xs font-avionics font-bold text-slate-200 tracking-wider">最近交互详细流水账本 (RECENT INTERACTION LOGS)</h3>
+            </div>
+            <span class="mil-label text-slate-400">SHOWING RECENT 50 RECORDS</span>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs font-telemetry">
+              <thead class="bg-[#080b12] text-slate-400 uppercase border-b border-[#232d42] text-[10px]">
+                <tr>
+                  <th class="p-3 pl-4">TIMESTAMP</th>
+                  <th class="p-3">TARGET CHANNEL</th>
+                  <th class="p-3">PERSONA</th>
+                  <th class="p-3">TOTAL FLUX</th>
+                  <th class="p-3">PROMPT / REPLY</th>
+                  <th class="p-3">REASONING</th>
+                  <th class="p-3">SPEED (TOK/S)</th>
+                  <th class="p-3">CACHE HIT</th>
+                  <th class="p-3">EST. COST (CNY)</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-[#1a2233] text-slate-300">
+                <tr v-for="log in tokenLogs" :key="log.id" class="hover:bg-[#131b29] transition">
+                  <td class="p-3 pl-4 text-slate-500 whitespace-nowrap">{{ log.created_at }}</td>
+                  <td class="p-3 text-cyan-300 font-bold whitespace-nowrap">{{ log.session_key }}</td>
+                  <td class="p-3">
+                    <span class="mil-label text-amber-300 border-amber-600/40 bg-amber-950/30">{{ log.persona }}</span>
+                  </td>
+                  <td class="p-3 font-bold text-amber-400">{{ log.total_tokens }} T</td>
+                  <td class="p-3 text-[11px] text-slate-400">{{ log.estimated_prompt_tokens }} / {{ log.estimated_reply_tokens }}</td>
+                  <td class="p-3 text-purple-300 font-medium">
+                    {{ log.reasoning_tokens ? log.reasoning_tokens + ' T' : '-' }}
+                  </td>
+                  <td class="p-3 text-cyan-300">
+                    {{ log.throughput_tps ? log.throughput_tps + ' t/s' : (log.duration_ms ? ((log.estimated_reply_tokens / (log.duration_ms / 1000)).toFixed(1) + ' t/s') : '-') }}
+                  </td>
+                  <td class="p-3 text-cyan-400">
+                    {{ ((log.cache_hit_rate || 0) * (log.cache_hit_rate <= 1 ? 100 : 1)).toFixed(1) }}%
+                  </td>
+                  <td class="p-3 font-bold text-amber-400">
+                    {{ log.cost_cny !== undefined && log.cost_cny !== null ? '¥' + Number(log.cost_cny).toFixed(4) : '-' }}
+                  </td>
+                </tr>
+                <tr v-if="!tokenLogs || tokenLogs.length === 0">
+                  <td colspan="9" class="p-6 text-center text-slate-500 text-xs">
+                    暂无流水记录，群聊或对讲机发生对话时将实时记录...
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 6. 主控室诊断机柜 (Avionics Mainframe Diagnostics) -->
+      <div v-if="currentTab === 'ops'" class="max-w-7xl mx-auto space-y-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="flex items-center space-x-2">
+              <span class="mil-label border-[#3b4d6e] text-emerald-400 bg-emerald-950/40">AVIONICS 06 // DIAG</span>
+              <h2 class="text-xl font-avionics font-bold text-white flex items-center space-x-2">
+                <span>🎛️</span>
+                <span>主控室诊断机柜与通信状态 (Mainframe Diagnostics)</span>
+              </h2>
+            </div>
+            <p class="text-xs text-slate-400 mt-1 font-telemetry">
+              SNOWLUMA 载波链路 • 守护进程性能核心 • 各信道切片诊断 • 实时 CRT 控制台日志
+            </p>
+          </div>
+          <div class="flex items-center space-x-2 font-avionics">
+            <button @click="cleanImageCache" class="btn-tactile px-3.5 py-1.5 rounded text-slate-300 text-xs tracking-wider">
+              🗑️ PURGE IMAGES
+            </button>
+            <button @click="reloadDaemonConfig" class="btn-tactile-cyan px-3.5 py-1.5 rounded text-xs tracking-wider">
+              🔄 RELOAD DAEMON
+            </button>
+            <button @click="restartDaemon" class="btn-tactile-red px-3.5 py-1.5 rounded text-xs tracking-wider">
+              ⚡ REBOOT DAEMON
+            </button>
+          </div>
+        </div>
+
+        <!-- Status Gauges Grid (5 Inset Avionics Gauges) -->
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          <div class="rack-card rounded-lg p-4 border border-[#253147] relative">
+            <div class="screw screw-tl"></div>
+            <div class="screw screw-tr"></div>
+            <div class="mil-label text-slate-400 font-telemetry">SNOWLUMA LINK</div>
+            <div class="text-base font-bold font-telemetry mt-1 flex items-center space-x-2" :class="systemStatus.snowLuma?.connected ? 'glow-green' : 'glow-red'">
+              <span>{{ systemStatus.snowLuma?.connected ? 'ONLINE // ONEBOT' : 'DISCONNECTED' }}</span>
+            </div>
+            <div class="text-[10px] text-slate-500 font-telemetry mt-1">BOT QQ: {{ systemStatus.snowLuma?.botQqId }}</div>
+          </div>
+
+          <div class="rack-card rounded-lg p-4 border border-[#253147] relative">
+            <div class="screw screw-tl"></div>
+            <div class="screw screw-tr"></div>
+            <div class="mil-label text-slate-400 font-telemetry">MISSION UPTIME</div>
+            <div class="text-xl font-bold font-telemetry glow-cyan mt-1">{{ formatUptime(systemStatus.uptime) }}</div>
+            <div class="text-[10px] text-slate-500 font-telemetry mt-1">NODE {{ systemStatus.nodeVersion }} on {{ systemStatus.platform }}</div>
+          </div>
+
+          <div class="rack-card rounded-lg p-4 border border-[#253147] relative">
+            <div class="screw screw-tl"></div>
+            <div class="screw screw-tr"></div>
+            <div class="mil-label text-slate-400 font-telemetry">RAM LOAD</div>
+            <div class="text-xl font-bold font-telemetry glow-amber mt-1">{{ systemStatus.memory?.heapUsedMB }} MB</div>
+            <div class="text-[10px] text-slate-500 font-telemetry mt-1">RSS: {{ systemStatus.memory?.rssMB }} MB</div>
+          </div>
+
+          <div class="rack-card rounded-lg p-4 border border-[#253147] relative">
+            <div class="screw screw-tl"></div>
+            <div class="screw screw-tr"></div>
+            <div class="mil-label text-slate-400 font-telemetry">CHANNELS & SLICES</div>
+            <div class="text-xl font-bold font-telemetry glow-cyan mt-1">{{ systemStatus.enabledGroupCount }} / {{ systemStatus.managedGroupCount }} CH</div>
+            <div class="text-[10px] text-slate-500 font-telemetry mt-1">{{ systemStatus.activeSessionsCount }} ACTIVE SLICES</div>
+          </div>
+
+          <div class="rack-card rounded-lg p-4 border border-[#253147] relative flex flex-col justify-between">
+            <div class="screw screw-tl"></div>
+            <div class="screw screw-tr"></div>
+            <div>
+              <div class="mil-label text-cyan-400 font-telemetry">FIFO BUFFER</div>
+              <div class="text-xl font-bold font-telemetry glow-cyan mt-1">
+                {{ systemStatus.cachedImageCount !== undefined ? systemStatus.cachedImageCount : (cachedImagesInfo.count || 0) }} / 15
+              </div>
+              <div class="text-[10px] text-slate-500 font-telemetry mt-0.5">AUTO EVAPORATE</div>
+            </div>
+            <button @click="cleanImageCache" class="btn-tactile-red mt-2 w-full py-1 rounded text-[10px] font-avionics tracking-wider">
+              PURGE BUFFER
+            </button>
+          </div>
+        </div>
+
+        <!-- Active Sessions Inspection -->
+        <div class="rack-card rounded-lg p-5 border border-[#253147] space-y-3 relative">
+          <div class="screw screw-tl"></div>
+          <div class="screw screw-tr"></div>
+          <div class="flex items-center justify-between pb-2 border-b border-[#232d42]">
+            <h3 class="text-xs font-avionics font-bold text-slate-200 tracking-wider flex items-center space-x-1.5">
+              <span>🧵</span>
+              <span>各信道会话切片 (SESSION SLICES) 实时运转状态</span>
+            </h3>
+            <span class="mil-label text-slate-400">ISOLATED PERMUTATION</span>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div v-for="s in systemStatus.sessions" :key="s.sessionKey" class="slot-inset rounded p-3 text-xs space-y-1.5 border border-[#1a2233] font-telemetry">
+              <div class="flex items-center justify-between">
+                <span class="font-bold text-cyan-400">{{ s.sessionKey }}</span>
+                <span class="mil-label font-bold text-[9px]"
+                  :class="s.isSleeping ? 'border-amber-500/50 text-amber-300' : (s.isActive ? 'border-emerald-500/50 text-emerald-300' : 'border-slate-700 text-slate-400')">
+                  {{ s.isSleeping ? ('DIVE ' + s.sleepRemainingSec + 'S') : (s.isActive ? ('TALKING ' + s.activeRemainingSec + 'S') : 'STANDBY') }}
+                </span>
+              </div>
+              <div class="text-[11px] text-slate-400">
+                TURNS: <span class="font-bold text-slate-200">{{ s.turnCount || 0 }} / 30</span>
+              </div>
+              <div class="text-[11px] text-slate-500">
+                CASCADE: <span class="text-slate-400">{{ s.cascadeId ? s.cascadeId.slice(0, 10) + '...' : 'NONE' }}</span>
+              </div>
+            </div>
+            <div v-if="!systemStatus.sessions || systemStatus.sessions.length === 0" class="col-span-3 text-center py-4 text-slate-500 text-xs font-telemetry">
+              当前暂无正在活跃的会话切片。
+            </div>
+          </div>
+        </div>
+
+        <!-- Realtime System Terminal Log Viewer (Phosphor CRT Screen) -->
+        <div class="rack-card rounded-lg border border-[#253147] overflow-hidden shadow-2xl relative">
+          <div class="screw screw-tl"></div>
+          <div class="screw screw-tr"></div>
+          <div class="p-3.5 border-b border-[#232d42] flex items-center justify-between bg-[#0e1420] relative z-10">
+            <div class="flex items-center space-x-2 font-avionics">
+              <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#10b981] animate-pulse"></span>
+              <h3 class="text-xs font-bold text-slate-200 tracking-wider">实时守护进程 CRT 诊断控制台 (CONSOLE CRT LOGS)</h3>
+            </div>
+            <div class="flex items-center space-x-3 font-telemetry text-xs">
+              <label class="flex items-center space-x-1 text-slate-400 cursor-pointer">
+                <input v-model="autoScrollLogs" type="checkbox" class="rounded bg-[#080b12] border-[#2b3952] text-amber-500 focus:ring-0">
+                <span>AUTO SCROLL</span>
+              </label>
+              <button @click="clearLogs" class="btn-tactile px-2.5 py-1 rounded text-xs text-slate-300">
+                CLEAR CRT
+              </button>
+            </div>
+          </div>
+
+          <!-- CRT Phosphor Monitor Display -->
+          <div ref="logContainer" class="crt-monitor h-80 overflow-y-auto p-4 text-xs font-telemetry text-emerald-400 space-y-1">
+            <div v-if="systemLogs.length === 0" class="text-slate-600 italic">
+              [SYSTEM CRON] Awaiting incoming kernel telemetry streams...
+            </div>
+            <div v-for="(log, idx) in systemLogs" :key="idx" class="leading-relaxed hover:bg-emerald-950/20 px-1 rounded transition">
+              <span class="text-emerald-600">[{{ log.time }}]</span>
+              <span class="font-bold ml-1.5" :class="log.level === 'error' ? 'text-red-400 glow-red' : (log.level === 'warn' ? 'text-amber-400 glow-amber' : 'text-emerald-300')">
+                [{{ log.level ? log.level.toUpperCase() : 'LOG' }}]
+              </span>
+              <span class="ml-2 text-slate-300">{{ log.text || log.message }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Modal 1: Channel Configuration Hatch (Group Modal) -->
+    <div v-if="showGroupModal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+      <div class="rack-card rounded-lg p-6 border border-[#2b3952] w-full max-w-md space-y-4 shadow-2xl relative">
+        <div class="screw screw-tl"></div>
+        <div class="screw screw-tr"></div>
+        <div class="screw screw-bl"></div>
+        <div class="screw screw-br"></div>
+
+        <div class="flex items-center space-x-2 relative z-10">
+          <span class="mil-label border-[#3b4d6e] text-cyan-400 font-telemetry">CONFIG HATCH</span>
+          <h3 class="font-avionics font-bold text-base text-white tracking-wide">{{ isEditingGroup ? '信道策略校准' : '配置新信道机架' }}</h3>
+        </div>
+
+        <div class="space-y-3 text-xs relative z-10 font-telemetry">
+          <div>
+            <label class="text-slate-400 mb-1 block">CHANNEL FREQ ID (QQ 群号)</label>
+            <input v-model="groupModalForm.groupId" :disabled="isEditingGroup" type="number" placeholder="如: 587071853" class="slot-inset w-full rounded p-2.5 text-white disabled:opacity-50 focus:outline-none focus:border-cyan-500 font-telemetry">
+          </div>
+          <div>
+            <label class="text-slate-400 mb-1 block">CALLSIGN / NAME (群别名呼号)</label>
+            <input v-model="groupModalForm.name" type="text" placeholder="如: 技术交流与水群" class="slot-inset w-full rounded p-2.5 text-white focus:outline-none focus:border-cyan-500 font-telemetry">
+          </div>
+          <div>
+            <label class="text-slate-400 mb-1 block">TRIGGER MATRIX (触发策略模式)</label>
+            <select v-model="groupModalForm.triggerPolicy" class="slot-inset w-full rounded p-2.5 text-white focus:outline-none focus:border-cyan-500 font-telemetry">
+              <option value="all">AMBIENT // 自然插嘴 (允许自主探头 + @机器人)</option>
+              <option value="strict">STRICT // 严苛模式 (仅允许 @机器人 或明确语义直问)</option>
+            </select>
+          </div>
+          <div class="flex items-center space-x-2 pt-1 font-avionics">
+            <input type="checkbox" id="grpEn" v-model="groupModalForm.enabled" class="rounded bg-[#080b12] border-[#2b3952] text-amber-500">
+            <label for="grpEn" class="text-slate-300">接通该信道 AI 载波回路 (CARRIER ENABLED)</label>
+          </div>
+        </div>
+
+        <div class="flex justify-end space-x-2 pt-3 border-t border-[#232d42] relative z-10 font-avionics">
+          <button @click="showGroupModal = false" class="btn-tactile px-4 py-2 rounded text-slate-300 text-xs">CANCEL // 取消</button>
+          <button @click="saveGroupModal" class="btn-tactile-cyan px-4 py-2 rounded text-white text-xs font-bold">COMMIT // 锁定落盘</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal 2: Intercom Transmission Hatch (Intercom Modal) -->
+    <div v-if="showIntercomModal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+      <div class="rack-card rounded-lg p-6 border border-[#2b3952] w-full max-w-lg space-y-4 shadow-2xl relative">
+        <div class="screw screw-tl"></div>
+        <div class="screw screw-tr"></div>
+        <div class="screw screw-bl"></div>
+        <div class="screw screw-br"></div>
+
+        <div class="flex items-center space-x-2 relative z-10">
+          <span class="mil-label border-[#3b4d6e] text-amber-400 font-telemetry">COMM UNIT</span>
+          <h3 class="font-avionics font-bold text-base text-white tracking-wide flex items-center space-x-1.5">
+            <span>📢</span>
+            <span>对讲机发信 (SUB-SPACE BROADCAST)</span>
+          </h3>
+        </div>
+        <p class="text-xs text-slate-400 font-telemetry relative z-10">选择目标信道或单机节点，直接调用 SnowLuma 网关进行电波发射。</p>
+
+        <div class="space-y-3 text-xs relative z-10 font-telemetry">
+          <div>
+            <label class="text-slate-400 mb-1 block">TARGET PROTOCOL (目标类型)</label>
+            <select v-model="intercomForm.targetType" class="slot-inset w-full rounded p-2.5 text-white focus:outline-none focus:border-amber-500 font-telemetry">
+              <option value="group">GROUP CHANNEL // 群聊</option>
+              <option value="private">DIRECT NODE // 私聊好友</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-slate-400 mb-1 block">TARGET ID (目标 QQ 群号 / 好友 QQ 号)</label>
+            <input v-model="intercomForm.targetId" type="number" placeholder="输入群号或好友 QQ 号" class="slot-inset w-full rounded p-2.5 text-white focus:outline-none focus:border-amber-500 font-telemetry">
+          </div>
+          <div>
+            <label class="text-slate-400 mb-1 block">PAYLOAD TEXT (传输报文内容)</label>
+            <textarea v-model="intercomForm.message" rows="4" placeholder="输入要广播的消息..." class="slot-inset w-full rounded p-2.5 text-white focus:outline-none focus:border-amber-500 font-telemetry"></textarea>
+          </div>
+        </div>
+
+        <div class="flex justify-end space-x-2 pt-3 border-t border-[#232d42] relative z-10 font-avionics">
+          <button @click="showIntercomModal = false" class="btn-tactile px-4 py-2 rounded text-slate-300 text-xs">CANCEL // 取消</button>
+          <button @click="submitIntercom" class="btn-tactile-amber px-4 py-2 rounded text-white text-xs font-bold">TRANSMIT // 立即发射</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal 3: Affinity Calibration Hatch (Affinity Modal) -->
+    <div v-if="showAffinityModal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+      <div class="rack-card rounded-lg p-6 border border-[#2b3952] w-full max-w-sm space-y-4 shadow-2xl relative">
+        <div class="screw screw-tl"></div>
+        <div class="screw screw-tr"></div>
+        <div class="screw screw-bl"></div>
+        <div class="screw screw-br"></div>
+
+        <div class="flex items-center space-x-2 relative z-10">
+          <span class="mil-label border-[#3b4d6e] text-pink-400 font-telemetry">CALIBRATION</span>
+          <h3 class="font-avionics font-bold text-base text-white tracking-wide">校准用户好感步进档案</h3>
+        </div>
+
+        <div class="space-y-3 text-xs relative z-10 font-telemetry">
+          <div class="text-slate-400 font-mono">NODE ID: {{ affinityForm.userId }}</div>
+          <div>
+            <label class="text-slate-400 mb-1 block">AFFINITY POINTS (-100 ~ 100)</label>
+            <input v-model="affinityForm.points" type="number" min="-100" max="100" class="slot-inset w-full rounded p-2.5 text-white focus:outline-none focus:border-pink-500 font-telemetry">
+          </div>
+          <div>
+            <label class="text-slate-400 mb-1 block">CALIBRATION LOG (变动备注)</label>
+            <input v-model="affinityForm.reason" type="text" placeholder="如: 管理员指令鼓励" class="slot-inset w-full rounded p-2.5 text-white focus:outline-none focus:border-pink-500 font-telemetry">
+          </div>
+        </div>
+
+        <div class="flex justify-end space-x-2 pt-3 border-t border-[#232d42] relative z-10 font-avionics">
+          <button @click="showAffinityModal = false" class="btn-tactile px-4 py-2 rounded text-slate-300 text-xs">CANCEL</button>
+          <button @click="saveAffinityModal" class="btn-tactile-cyan px-4 py-2 rounded text-white text-xs font-bold">COMMIT</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal 4: Slang Vocabulary Hatch (Slang Modal) -->
+    <div v-if="showSlangModal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+      <div class="rack-card rounded-lg p-6 border border-[#2b3952] w-full max-w-sm space-y-4 shadow-2xl relative">
+        <div class="screw screw-tl"></div>
+        <div class="screw screw-tr"></div>
+        <div class="screw screw-bl"></div>
+        <div class="screw screw-br"></div>
+
+        <div class="flex items-center space-x-2 relative z-10">
+          <span class="mil-label border-[#3b4d6e] text-amber-400 font-telemetry">DICTIONARY</span>
+          <h3 class="font-avionics font-bold text-base text-white tracking-wide">{{ isEditingSlang ? '编辑网络黑话' : '录入新黑话词条' }}</h3>
+        </div>
+
+        <div class="space-y-3 text-xs relative z-10 font-telemetry">
+          <div>
+            <label class="text-slate-400 mb-1 block">SLANG WORD (黑话词汇)</label>
+            <input v-model="slangForm.word" type="text" placeholder="如: 电子榨菜" class="slot-inset w-full rounded p-2.5 text-white focus:outline-none focus:border-amber-500 font-telemetry">
+          </div>
+          <div>
+            <label class="text-slate-400 mb-1 block">SEMANTIC MEANING (语义解析)</label>
+            <textarea v-model="slangForm.meaning" rows="2" placeholder="如: 指吃饭时配着看的下饭视频" class="slot-inset w-full rounded p-2.5 text-white focus:outline-none focus:border-amber-500 font-telemetry"></textarea>
+          </div>
+          <div v-if="isEditingSlang">
+            <label class="text-slate-400 mb-1 block">OCCURRENCE COUNT (出现频次)</label>
+            <input v-model="slangForm.count" type="number" class="slot-inset w-full rounded p-2.5 text-white focus:outline-none font-telemetry">
+          </div>
+        </div>
+
+        <div class="flex justify-end space-x-2 pt-3 border-t border-[#232d42] relative z-10 font-avionics">
+          <button @click="showSlangModal = false" class="btn-tactile px-4 py-2 rounded text-slate-300 text-xs">CANCEL</button>
+          <button @click="saveSlangModal" class="btn-tactile-amber px-4 py-2 rounded text-white text-xs font-bold">COMMIT WORD</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal 5: Image Inspection Lightbox -->
+    <div v-if="previewImageUrl" @click="closeImagePreview" class="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-4 cursor-pointer">
+      <div class="relative max-w-4xl max-h-[90vh] flex flex-col items-center" @click.stop>
+        <img :src="previewImageUrl" class="max-w-full max-h-[85vh] rounded-lg shadow-2xl object-contain border border-[#3b4d6e] bg-[#080b12]">
+        <button @click="closeImagePreview" class="btn-tactile mt-3 px-5 py-1.5 rounded text-white text-xs font-avionics">
+          CLOSE LIGHTBOX // 关闭大图
+        </button>
+      </div>
+    </div>
+
+    <!-- Modal 6: Operator Security Key Access Hatch (Login Modal) -->
+    <div v-if="showLoginModal" class="fixed inset-0 bg-black/90 backdrop-blur-lg z-50 flex items-center justify-center p-4">
+      <div class="rack-card rounded-lg p-8 border border-[#2b3952] w-full max-w-sm space-y-5 shadow-2xl text-center relative">
+        <div class="screw screw-tl"></div>
+        <div class="screw screw-tr"></div>
+        <div class="screw screw-bl"></div>
+        <div class="screw screw-br"></div>
+
+        <div class="w-16 h-16 rounded-lg bg-gradient-to-b from-[#243147] to-[#101522] border border-[#3b4d6e] flex items-center justify-center text-3xl mx-auto shadow-lg relative">
+          <span class="filter drop-shadow-[0_0_8px_rgba(245,158,11,0.7)]">🛰️</span>
+        </div>
+        
+        <div>
+          <div class="mil-label border-[#3b4d6e] text-cyan-400 mb-1.5 font-telemetry">AUTHENTICATION GATE</div>
+          <h2 class="text-lg font-avionics font-bold text-white tracking-wider">HAKIMI MISSION CONTROL</h2>
+          <p class="text-xs text-slate-400 mt-1 font-telemetry">请输入管理员操作密匙 (ADMIN TOKEN)</p>
+        </div>
+
+        <div class="space-y-3 font-telemetry">
+          <input v-model="loginToken" @keyup.enter="handleLogin" type="password" placeholder="ADMIN ACCESS TOKEN" class="slot-inset w-full rounded px-4 py-3 text-sm text-center text-white focus:outline-none focus:border-amber-500 font-telemetry tracking-widest">
+          <button @click="handleLogin" class="btn-tactile-amber w-full py-3 rounded text-sm font-avionics font-bold tracking-wider">
+            AUTHORIZE & ENTER // 登入控制台
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Vue 3 Application Script -->
+  <script>
+    const { createApp, ref, reactive, computed, watch, onMounted, nextTick } = Vue;
+
+    createApp({
+      setup() {
+        const adminToken = ref(localStorage.getItem('hakimi_admin_token') || 'hakimi-admin-token-2026');
+        const showLoginModal = ref(!adminToken.value);
+        const loginToken = ref(adminToken.value);
+
+        const currentTab = ref('groups');
+        const tabs = [
+          { id: 'groups', channel: 'CH-01', name: '信道机架', icon: '📡' },
+          { id: 'persona', channel: 'CH-02', name: '神经矩阵', icon: '🧬' },
+          { id: 'messages', channel: 'CH-03', name: '电传示波', icon: '⚡' },
+          { id: 'vault', channel: 'CH-04', name: '晶体归档', icon: '💎' },
+          { id: 'tokens', channel: 'CH-05', name: '反应堆配额', icon: '☢️' },
+          { id: 'ops', channel: 'CH-06', name: '诊断机柜', icon: '🎛️' }
+        ];
+
+        const wsConnected = ref(false);
+        let ws = null;
+
+        // Data Models
+        const groups = ref([]);
+        const personas = ref([]);
+        const activePersonaKey = ref('tomoko');
+        const activePersonaDisplayName = ref('智子');
+        const selectedEditPersona = ref(null);
+        const personaCardContent = ref('');
+
+        const characterState = ref({
+          location: '海外家中二楼房间',
+          action: '坐在地毯上抱着 Switch 玩单机',
+          detail: '房间里只有按键声与屏幕光影',
+          mood: '放松、专注'
+        });
+
+        const relocateForm = reactive({
+          location: '',
+          action: '',
+          detail: '',
+          mood: ''
+        });
+
+        // Messages & Social decisions & Smart scroll
+        const liveMessages = ref([]);
+        const socialDecisions = ref([]);
+        const messageFilterGroup = ref('');
+        const quickMessageText = ref('');
+        const chatScrollBox = ref(null);
+        const isUserScrolledUp = ref(false);
+        const hasNewMessagesBelow = ref(false);
+
+        // Cached Images
+        const cachedImagesInfo = ref({ count: 0, max: 15 });
+
+        // Vault Subtabs
+        const vaultSubTab = ref('affinity');
+        const vaultTabs = [
+          { id: 'affinity', name: '用户好感度排行' },
+          { id: 'memories', name: '长期记忆切片' },
+          { id: 'slangs', name: '黑话词典' }
+        ];
+        const affinities = ref([]);
+        const affinitySearch = ref('');
+        const affinitySort = ref('points_desc');
+        const affinityPage = ref(1);
+        const affinityLimit = ref(15);
+        const affinityTotal = ref(0);
+        const previewImageUrl = ref(null);
+        const memories = ref([]);
+        const slangs = ref([]);
+        const slangSearch = ref('');
+
+        // Token stats & charts & Antigravity Quota
+        const tokenDays = ref(7);
+        const tokenStats = ref({ summary: {}, trend: [], byGroup: [], byPersona: [], peakHours: [] });
+        const tokenLogs = ref([]);
+        const quotaStatus = ref({
+          lowestRemainingPercent: 100,
+          isThrottled: false,
+          isExhausted: false,
+          groups: []
+        });
+        const isRefreshingQuota = ref(false);
+        let trendChartInstance = null;
+        let personaChartInstance = null;
+        let peakChartInstance = null;
+
+        // Ops status & logs
+        const systemStatus = ref({
+          uptime: 0,
+          snowLuma: { connected: false },
+          memory: {},
+          sessions: []
+        });
+        const systemLogs = ref([]);
+        const autoScrollLogs = ref(true);
+        const logContainer = ref(null);
+
+        // Modals
+        const showGroupModal = ref(false);
+        const isEditingGroup = ref(false);
+        const groupModalForm = reactive({ groupId: null, name: '', enabled: true, triggerPolicy: 'all' });
+
+        const showIntercomModal = ref(false);
+        const intercomForm = reactive({ targetType: 'group', targetId: '', message: '' });
+
+        const showAffinityModal = ref(false);
+        const affinityForm = reactive({ userId: null, points: 30, reason: '' });
+
+        const showSlangModal = ref(false);
+        const isEditingSlang = ref(false);
+        const slangForm = reactive({ id: null, word: '', meaning: '', count: 1 });
+
+        // API Helper
+        async function api(path, options = {}) {
+          const headers = options.headers || {};
+          if (adminToken.value) {
+            headers['Authorization'] = `Bearer ${adminToken.value}`;
+          }
+          headers['Content-Type'] = 'application/json';
+          try {
+            const res = await fetch(path, { ...options, headers });
+            if (res.status === 401) {
+              showLoginModal.value = true;
+              throw new Error('未授权，请重新登录');
+            }
+            return await res.json();
+          } catch (err) {
+            console.warn(`[API] ${path} 请求失败:`, err.message);
+            throw err;
+          }
+        }
+
+        function handleLogin() {
+          if (!loginToken.value) return;
+          api('/api/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({ token: loginToken.value })
+          }).then(res => {
+            if (res.success) {
+              adminToken.value = loginToken.value;
+              localStorage.setItem('hakimi_admin_token', adminToken.value);
+              showLoginModal.value = false;
+              initDashboard();
+            } else {
+              alert(res.message || 'Token 验证失败');
+            }
+          }).catch(e => alert(e.message));
+        }
+
+        function logout() {
+          localStorage.removeItem('hakimi_admin_token');
+          adminToken.value = '';
+          showLoginModal.value = true;
+        }
+
+        // 1. Group Operations
+        async function loadGroups() {
+          const res = await api('/api/groups');
+          if (res?.data) {
+            groups.value = res.data;
+          }
+        }
+
+        function openAddGroupModal() {
+          isEditingGroup.value = false;
+          groupModalForm.groupId = '';
+          groupModalForm.name = '';
+          groupModalForm.enabled = true;
+          groupModalForm.triggerPolicy = 'all';
+          showGroupModal.value = true;
+        }
+
+        function openEditGroupModal(g) {
+          isEditingGroup.value = true;
+          groupModalForm.groupId = g.group_id;
+          groupModalForm.name = g.group_name;
+          groupModalForm.enabled = g.enabled;
+          groupModalForm.triggerPolicy = g.trigger_policy || 'all';
+          showGroupModal.value = true;
+        }
+
+        async function saveGroupModal() {
+          if (!groupModalForm.groupId) return alert('请输入群号');
+          const method = isEditingGroup.value ? 'PUT' : 'POST';
+          const url = isEditingGroup.value ? `/api/groups/${groupModalForm.groupId}` : '/api/groups';
+          await api(url, {
+            method,
+            body: JSON.stringify(groupModalForm)
+          });
+          showGroupModal.value = false;
+          loadGroups();
+        }
+
+        async function toggleGroup(g) {
+          const res = await api(`/api/groups/${g.group_id}/toggle`, {
+            method: 'POST',
+            body: JSON.stringify({ enabled: !g.enabled })
+          });
+          if (res?.data) {
+            g.enabled = res.data.enabled;
+          }
+        }
+
+        async function deleteGroup(groupId) {
+          if (!confirm(`确定将群 ${groupId} 从白名单移除吗？`)) return;
+          await api(`/api/groups/${groupId}`, { method: 'DELETE' });
+          loadGroups();
+        }
+
+        async function resetGroupSession(groupId) {
+          await api('/api/sessions/reset', {
+            method: 'POST',
+            body: JSON.stringify({ groupId })
+          });
+          alert(`群 ${groupId} 的会话上下文切片已切断重置！`);
+        }
+
+        // 2. Persona Operations
+        async function loadPersonas() {
+          const res = await api('/api/personas');
+          if (res?.data) {
+            personas.value = res.data;
+            activePersonaKey.value = res.activePreset;
+            const current = personas.value.find(p => p.key === res.activePreset);
+            if (current) activePersonaDisplayName.value = current.displayName;
+            if (!selectedEditPersona.value) {
+              selectedEditPersona.value = current || personas.value[0];
+              loadPersonaCard(selectedEditPersona.value?.key);
+            }
+          }
+        }
+
+        async function switchPersona(key) {
+          const res = await api('/api/personas/switch', {
+            method: 'POST',
+            body: JSON.stringify({ name: key })
+          });
+          if (res?.success) {
+            activePersonaKey.value = key;
+            activePersonaDisplayName.value = res.persona?.displayName || key;
+            loadPersonas();
+            loadCharacterState();
+          }
+        }
+
+        async function loadCharacterState() {
+          const res = await api('/api/character/state');
+          if (res?.data) {
+            characterState.value = res.data;
+            relocateForm.location = res.data.location;
+            relocateForm.action = res.data.action;
+            relocateForm.detail = res.data.detail;
+            relocateForm.mood = res.data.mood;
+          }
+        }
+
+        async function submitRelocate() {
+          const res = await api('/api/character/state', {
+            method: 'PUT',
+            body: JSON.stringify(relocateForm)
+          });
+          if (res?.data) {
+            characterState.value = res.data;
+            alert('角色时空身位已成功迁移落盘！');
+          }
+        }
+
+        function selectPersonaForEdit(p) {
+          selectedEditPersona.value = p;
+          loadPersonaCard(p.key);
+        }
+
+        async function loadPersonaCard(key) {
+          if (!key) return;
+          const res = await api(`/api/personas/${key}/card`);
+          if (res?.content !== undefined) {
+            personaCardContent.value = res.content;
+          }
+        }
+
+        async function savePersonaCard() {
+          const key = selectedEditPersona.value?.key || activePersonaKey.value;
+          await api(`/api/personas/${key}/card`, {
+            method: 'PUT',
+            body: JSON.stringify({ content: personaCardContent.value })
+          });
+          alert(`人设卡 [${key}.md] 保存成功，模型将实时加载新设定！`);
+        }
+
+        // 3. Messages & Intercom
+        const filteredMessages = computed(() => {
+          if (!messageFilterGroup.value) return liveMessages.value;
+          const target = String(messageFilterGroup.value).trim();
+          const bareGid = target.startsWith('group:') ? target.slice(6) : target;
+          return liveMessages.value.filter(m => {
+            const sk = String(m.session_key || m.sessionKey || '').trim();
+            const gid = String(m.groupId || m.group_id || '').trim();
+            return sk === target || sk === `group:${target}` || sk === bareGid || gid === bareGid;
+          });
+        });
+
+        async function loadHistoryMessages() {
+          const param = messageFilterGroup.value ? `?sessionKey=${encodeURIComponent(messageFilterGroup.value)}&limit=100` : '?limit=100';
+          const res = await api(`/api/messages${param}`);
+          if (res?.data) {
+            liveMessages.value = res.data;
+            scrollChatToBottom(true);
+          }
+        }
+
+        function clearLiveFeed() {
+          liveMessages.value = [];
+        }
+
+        function openIntercomModal() {
+          intercomForm.targetId = groups.value[0]?.group_id || '';
+          intercomForm.message = '';
+          showIntercomModal.value = true;
+        }
+
+        async function submitIntercom() {
+          if (!intercomForm.targetId || !intercomForm.message) return alert('请填写目标与内容');
+          const res = await api('/api/messages/send', {
+            method: 'POST',
+            body: JSON.stringify(intercomForm)
+          });
+          showIntercomModal.value = false;
+          if (res.success) {
+            alert('消息已送达！');
+          } else {
+            alert(res.message || '发送失败');
+          }
+        }
+
+        async function sendQuickMessage() {
+          if (!quickMessageText.value.trim()) return;
+          const targetGid = messageFilterGroup.value ? Number(messageFilterGroup.value.replace('group:', '')) : (groups.value[0]?.group_id || 587071853);
+          await api('/api/messages/send', {
+            method: 'POST',
+            body: JSON.stringify({
+              targetType: 'group',
+              targetId: targetGid,
+              message: quickMessageText.value.trim()
+            })
+          });
+          quickMessageText.value = '';
+        }
+
+        function handleChatScroll() {
+          const el = chatScrollBox.value;
+          if (!el) return;
+          const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+          if (distance > 80) {
+            isUserScrolledUp.value = true;
+          } else {
+            isUserScrolledUp.value = false;
+            hasNewMessagesBelow.value = false;
+          }
+        }
+
+        function isMessageVisibleInCurrentFilter(m) {
+          if (!messageFilterGroup.value) return true;
+          const target = String(messageFilterGroup.value).trim();
+          const bareGid = target.startsWith('group:') ? target.slice(6) : target;
+          const sk = String(m?.session_key || m?.sessionKey || '').trim();
+          const gid = String(m?.groupId || m?.group_id || '').trim();
+          return sk === target || sk === `group:${target}` || sk === bareGid || gid === bareGid;
+        }
+
+        function scrollChatToBottom(force = false) {
+          if (force) {
+            isUserScrolledUp.value = false;
+            hasNewMessagesBelow.value = false;
+          } else if (isUserScrolledUp.value) {
+            hasNewMessagesBelow.value = true;
+            return;
+          }
+          nextTick(() => {
+            if (chatScrollBox.value) {
+              chatScrollBox.value.scrollTop = chatScrollBox.value.scrollHeight;
+              setTimeout(() => {
+                if (chatScrollBox.value && (!isUserScrolledUp.value || force)) {
+                  chatScrollBox.value.scrollTop = chatScrollBox.value.scrollHeight;
+                }
+              }, 40);
+            }
+          });
+        }
+
+        function scrollToBottomManual() {
+          scrollChatToBottom(true);
+        }
+
+        function onChatMessageMediaLoad() {
+          if (!isUserScrolledUp.value && chatScrollBox.value) {
+            chatScrollBox.value.scrollTop = chatScrollBox.value.scrollHeight;
+          }
+        }
+
+        function onChatMessageImgError(evt, im) {
+          evt.target.onerror = null;
+          evt.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 100' fill='%231e293b'%3E%3Crect width='200' height='100' rx='8'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%2364748b' font-size='12'%3E%F0%9F%96%BC%EF%B8%8F 图片已淘汰%3C/text%3E%3C/svg%3E";
+        }
+
+        function openImagePreview(url) {
+          previewImageUrl.value = url;
+        }
+
+        function closeImagePreview() {
+          previewImageUrl.value = null;
+        }
+
+        function onAvatarError(evt) {
+          evt.target.onerror = null;
+          evt.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2364748b'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z'/%3E%3C/svg%3E";
+        }
+
+        function getValidSenderId(msg) {
+          const id = msg?.sender_id ?? msg?.senderId;
+          if (!id || String(id) === 'undefined' || String(id) === 'null' || String(id) === '0') {
+            return null;
+          }
+          return String(id);
+        }
+
+        function getSenderDisplayName(msg) {
+          if (msg.is_bot || msg.isBot) {
+            const bName = msg.sender_name || msg.senderName;
+            if (bName && !bName.includes('undefined')) return bName;
+            return activePersonaDisplayName.value || 'AI';
+          }
+          const name = (msg.sender_name || msg.senderName || '').trim();
+          const validId = getValidSenderId(msg);
+          if (name && !name.includes('undefined') && !name.startsWith('群友(')) {
+            return name;
+          }
+          if (validId) {
+            return `群友 (${validId})`;
+          }
+          return '群友';
+        }
+
+        function fillCurrentLocation() {
+          if (characterState.value) {
+            relocateForm.location = characterState.value.location || '';
+            relocateForm.action = characterState.value.action || '';
+            relocateForm.detail = characterState.value.detail || '';
+            relocateForm.mood = characterState.value.mood || '自然';
+          }
+        }
+
+        function resetToDefaultLocation() {
+          const p = personas.value.find(x => x.key === activePersonaKey.value);
+          if (p) {
+            relocateForm.location = p.defaultLocation || '现实世界';
+            relocateForm.action = p.defaultAction || '待命中';
+            relocateForm.detail = p.defaultDetail || '现场平稳';
+            relocateForm.mood = p.defaultMood || '自然';
+          }
+        }
+
+        // 4. Vault Operations
+        async function loadAffinityList(page = 1) {
+          affinityPage.value = page;
+          const offset = (page - 1) * affinityLimit.value;
+          const res = await api(`/api/affinity?search=${encodeURIComponent(affinitySearch.value)}&sortBy=${affinitySort.value}&limit=${affinityLimit.value}&offset=${offset}`);
+          if (res?.rows) {
+            affinities.value = res.rows;
+            affinityTotal.value = res.total || 0;
+          }
+        }
+
+        async function cleanTestAffinityData() {
+          if (!confirm('确定清理所有无真实发言记录的测试垃圾好感度数据吗？\n真实活跃群友与管理员记录将安全保留。')) return;
+          try {
+            const res = await api('/api/affinity/clean-test-data', { method: 'POST' });
+            alert(res.message || '清理完成！');
+            loadAffinityList(1);
+          } catch (err) {
+            alert('清理失败: ' + err.message);
+          }
+        }
+
+        async function clearAllAffinityData() {
+          if (!confirm('⚠️ 高危操作：确定清空所有用户好感度记录吗？')) return;
+          try {
+            const res = await api('/api/affinity/clear-all', { method: 'POST' });
+            alert(res.message || '已清空！');
+            loadAffinityList(1);
+          } catch (err) {
+            alert('操作失败: ' + err.message);
+          }
+        }
+
+        function getAffinityPointsColor(pts) {
+          if (pts >= 90) return 'text-purple-400';
+          if (pts >= 70) return 'text-pink-400';
+          if (pts >= 50) return 'text-emerald-400';
+          if (pts >= 30) return 'text-sky-400';
+          if (pts >= 0) return 'text-amber-400';
+          return 'text-rose-500';
+        }
+
+        function getAffinityBarColor(pts) {
+          if (pts >= 90) return 'bg-gradient-to-r from-pink-500 to-purple-500';
+          if (pts >= 70) return 'bg-gradient-to-r from-brand-500 to-pink-500';
+          if (pts >= 50) return 'bg-gradient-to-r from-emerald-500 to-teal-400';
+          if (pts >= 30) return 'bg-gradient-to-r from-sky-500 to-indigo-500';
+          if (pts >= 0) return 'bg-gradient-to-r from-amber-500 to-yellow-400';
+          return 'bg-gradient-to-r from-rose-600 to-red-500';
+        }
+
+        function getAffinityLevelClass(level) {
+          switch (level) {
+            case '特别': return 'bg-purple-500/20 text-purple-300 border-purple-500/30';
+            case '挚友': return 'bg-pink-500/20 text-pink-300 border-pink-500/30';
+            case '朋友': return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
+            case '初识': return 'bg-sky-500/20 text-sky-300 border-sky-500/30';
+            case '戒备': return 'bg-amber-500/20 text-amber-300 border-amber-500/30';
+            case '嫌恶': return 'bg-rose-500/20 text-rose-300 border-rose-500/30';
+            default: return 'bg-slate-800 text-slate-300 border-slate-700';
+          }
+        }
+
+        function getAffinityLevelIcon(level) {
+          switch (level) {
+            case '特别': return '⭐';
+            case '挚友': return '💖';
+            case '朋友': return '🌿';
+            case '初识': return '💧';
+            case '戒备': return '⚠️';
+            case '嫌恶': return '❄️';
+            default: return '👤';
+          }
+        }
+
+        function openEditAffinityModal(u) {
+          affinityForm.userId = u.user_id;
+          affinityForm.points = u.affinity_points;
+          affinityForm.reason = u.last_reason;
+          showAffinityModal.value = true;
+        }
+
+        async function saveAffinityModal() {
+          await api(`/api/affinity/${affinityForm.userId}`, {
+            method: 'PUT',
+            body: JSON.stringify(affinityForm)
+          });
+          showAffinityModal.value = false;
+          loadAffinityList(affinityPage.value);
+        }
+
+        async function deleteAffinity(userId) {
+          if (!confirm(`确定清除用户 ${userId} 的好感记录吗？`)) return;
+          await api(`/api/affinity/${userId}`, { method: 'DELETE' });
+          loadAffinityList(affinityPage.value);
+        }
+
+        async function loadMemories() {
+          const res = await api('/api/memories');
+          if (res?.data) memories.value = res.data;
+        }
+
+        async function deleteMemory(sessionKey) {
+          if (!confirm(`确定删除会话 ${sessionKey} 的切片记忆吗？`)) return;
+          await api(`/api/memories/${encodeURIComponent(sessionKey)}`, { method: 'DELETE' });
+          loadMemories();
+        }
+
+        async function loadSlangs() {
+          const res = await api(`/api/slangs?search=${encodeURIComponent(slangSearch.value)}`);
+          if (res?.data) slangs.value = res.data;
+        }
+
+        function openAddSlangModal() {
+          isEditingSlang.value = false;
+          slangForm.id = null;
+          slangForm.word = '';
+          slangForm.meaning = '';
+          slangForm.count = 1;
+          showSlangModal.value = true;
+        }
+
+        function openEditSlangModal(s) {
+          isEditingSlang.value = true;
+          slangForm.id = s.id;
+          slangForm.word = s.word;
+          slangForm.meaning = s.meaning;
+          slangForm.count = s.count;
+          showSlangModal.value = true;
+        }
+
+        async function saveSlangModal() {
+          if (!slangForm.word) return alert('请输入黑话词汇');
+          const method = isEditingSlang.value ? 'PUT' : 'POST';
+          const url = isEditingSlang.value ? `/api/slangs/${slangForm.id}` : '/api/slangs';
+          await api(url, { method, body: JSON.stringify(slangForm) });
+          showSlangModal.value = false;
+          loadSlangs();
+        }
+
+        async function deleteSlangItem(id) {
+          if (!confirm('确定删除该黑话条目吗？')) return;
+          await api(`/api/slangs/${id}`, { method: 'DELETE' });
+          loadSlangs();
+        }
+
+        // 5. Token Stats, Quota & Charts
+        async function loadQuotaStatus(force = false) {
+          isRefreshingQuota.value = true;
+          try {
+            const res = await api(`/api/antigravity/quota${force ? '?refresh=true' : ''}`);
+            if (res?.data) {
+              quotaStatus.value = res.data;
+            }
+          } catch (err) {
+            console.warn('[Quota] 获取配额失败:', err.message);
+          } finally {
+            isRefreshingQuota.value = false;
+          }
+        }
+
+        async function loadTokenStats() {
+          loadQuotaStatus();
+          const res = await api(`/api/tokens/stats?days=${tokenDays.value}`);
+          if (res?.data) {
+            tokenStats.value = res.data;
+            renderTokenCharts(res.data);
+          }
+          const logRes = await api('/api/tokens/logs?limit=50');
+          if (logRes?.data) tokenLogs.value = logRes.data;
+        }
+
+        function renderTokenCharts(data) {
+          nextTick(() => {
+            // Trend Line Chart (Cosmic Amber & Cyan Phosphors)
+            const trendCanvas = document.getElementById('tokenTrendChart');
+            if (trendCanvas) {
+              if (trendChartInstance) trendChartInstance.destroy();
+              const dates = (data.trend || []).map(t => t.date);
+              const tokens = (data.trend || []).map(t => t.tokens);
+              const cachedTokens = (data.trend || []).map(t => t.cached_tokens || 0);
+              trendChartInstance = new Chart(trendCanvas, {
+                type: 'line',
+                data: {
+                  labels: dates.length ? dates : ['无数据'],
+                  datasets: [
+                    {
+                      label: '每日总消耗 Token (TOTAL FLUX)',
+                      data: tokens.length ? tokens : [0],
+                      borderColor: '#f59e0b',
+                      backgroundColor: 'rgba(245, 158, 11, 0.18)',
+                      fill: true,
+                      tension: 0.35,
+                      borderWidth: 2,
+                      pointBackgroundColor: '#f59e0b',
+                      pointRadius: 3
+                    },
+                    {
+                      label: 'KV 缓存命中 Token (CACHED FLUX)',
+                      data: cachedTokens.length ? cachedTokens : [0],
+                      borderColor: '#06b6d4',
+                      backgroundColor: 'rgba(6, 182, 212, 0.18)',
+                      fill: true,
+                      tension: 0.35,
+                      borderWidth: 2,
+                      pointBackgroundColor: '#06b6d4',
+                      pointRadius: 3
+                    }
+                  ]
+                },
+                options: {
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: {
+                    legend: {
+                      display: true,
+                      position: 'top',
+                      labels: { color: '#94a3b8', font: { family: 'Share Tech Mono', size: 10 } }
+                    }
+                  },
+                  scales: {
+                    x: { grid: { color: '#161f30' }, ticks: { color: '#64748b', font: { family: 'Share Tech Mono', size: 10 } } },
+                    y: { grid: { color: '#161f30' }, ticks: { color: '#64748b', font: { family: 'Share Tech Mono', size: 10 } } }
+                  }
+                }
+              });
+            }
+
+            // Persona Doughnut Chart
+            const personaCanvas = document.getElementById('tokenPersonaChart');
+            if (personaCanvas) {
+              if (personaChartInstance) personaChartInstance.destroy();
+              const labels = (data.byPersona || []).map(p => p.persona);
+              const vals = (data.byPersona || []).map(p => p.tokens);
+              personaChartInstance = new Chart(personaCanvas, {
+                type: 'doughnut',
+                data: {
+                  labels: labels.length ? labels : ['暂无'],
+                  datasets: [{
+                    data: vals.length ? vals : [1],
+                    backgroundColor: ['#f59e0b', '#06b6d4', '#10b981', '#a855f7', '#ec4899'],
+                    borderColor: '#0d121c',
+                    borderWidth: 2
+                  }]
+                },
+                options: {
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: {
+                    legend: { position: 'bottom', labels: { color: '#94a3b8', font: { family: 'Share Tech Mono', size: 10 } } }
+                  }
+                }
+              });
+            }
+
+            // Peak Hours Bar Chart
+            const peakCanvas = document.getElementById('peakHoursChart');
+            if (peakCanvas) {
+              if (peakChartInstance) peakChartInstance.destroy();
+              const hourLabels = Array.from({ length: 24 }, (_, i) => `${i}:00`);
+              const hourData = Array.from({ length: 24 }, () => 0);
+              (data.peakHours || []).forEach(h => {
+                if (h.hour >= 0 && h.hour < 24) hourData[h.hour] = h.tokens;
+              });
+              peakChartInstance = new Chart(peakCanvas, {
+                type: 'bar',
+                data: {
+                  labels: hourLabels,
+                  datasets: [{
+                    label: '小时 Token 吞吐',
+                    data: hourData,
+                    backgroundColor: '#06b6d4',
+                    borderRadius: 2
+                  }]
+                },
+                options: {
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: { legend: { display: false } },
+                  scales: {
+                    x: { grid: { display: false }, ticks: { color: '#64748b', font: { family: 'Share Tech Mono', size: 9 } } },
+                    y: { grid: { color: '#161f30' }, ticks: { color: '#64748b', font: { family: 'Share Tech Mono', size: 9 } } }
+                  }
+                }
+              });
+            }
+          });
+        }
+
+        // 6. Ops Operations
+        async function loadSystemStatus() {
+          const res = await api('/api/system/status');
+          if (res?.data) {
+            systemStatus.value = res.data;
+            if (res.data.cachedImageCount !== undefined) {
+              cachedImagesInfo.value.count = res.data.cachedImageCount;
+            }
+          }
+        }
+
+        async function cleanImageCache() {
+          if (!confirm('确定要清空本地所有缓存图片吗？')) return;
+          const res = await api('/api/system/clean-images', {
+            method: 'POST',
+            body: JSON.stringify({ keepLatest: 0 })
+          });
+          if (res?.success) {
+            if (res.count !== undefined) {
+              cachedImagesInfo.value.count = res.count;
+              if (systemStatus.value) systemStatus.value.cachedImageCount = res.count;
+            }
+            alert(res.message || '图片缓存已清空！');
+            loadSystemStatus();
+          } else {
+            alert(res?.error || '清理失败');
+          }
+        }
+
+        async function loadSystemLogs() {
+          const res = await api('/api/system/logs');
+          if (res?.data) {
+            systemLogs.value = res.data;
+            scrollLogs();
+          }
+        }
+
+        function clearLogs() {
+          systemLogs.value = [];
+        }
+
+        function scrollLogs() {
+          if (!autoScrollLogs.value) return;
+          nextTick(() => {
+            if (logContainer.value) {
+              logContainer.value.scrollTop = logContainer.value.scrollHeight;
+            }
+          });
+        }
+
+        async function reloadDaemonConfig() {
+          await api('/api/system/reload', { method: 'POST' });
+          alert('配置与人设已重新加载！');
+          loadGroups();
+          loadPersonas();
+        }
+
+        async function restartDaemon() {
+          if (!confirm('确定重启守护进程吗？重启期间 QQ 消息将暂停约 3 秒。')) return;
+          await api('/api/system/restart', { method: 'POST' });
+          alert('正在重启，页面将尝试重新建立推流连接...');
+        }
+
+        function formatUptime(sec = 0) {
+          const h = Math.floor(sec / 3600);
+          const m = Math.floor((sec % 3600) / 60);
+          const s = sec % 60;
+          return `${h}小时 ${m}分 ${s}秒`;
+        }
+
+        // 7. WebSocket Live Streaming
+        function initWebSocket() {
+          const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const tokenParam = adminToken.value ? `?token=${encodeURIComponent(adminToken.value)}` : '';
+          const wsUrl = `${protocol}//${location.host}/ws${tokenParam}`;
+          
+          ws = new WebSocket(wsUrl);
+
+          ws.onopen = () => {
+            wsConnected.value = true;
+          };
+
+          ws.onmessage = (event) => {
+            try {
+              const msg = JSON.parse(event.data);
+              if (msg.type === 'init') {
+                if (msg.data.characterState) {
+                  characterState.value = msg.data.characterState;
+                  if (!relocateForm.location) fillCurrentLocation();
+                }
+                if (msg.data.activePersona) {
+                  activePersonaKey.value = msg.data.activePersona;
+                  const cur = personas.value.find(p => p.key === msg.data.activePersona);
+                  if (cur) activePersonaDisplayName.value = cur.displayName;
+                }
+                if (msg.data.groups) groups.value = msg.data.groups;
+                if (msg.data.recentLogs) systemLogs.value = msg.data.recentLogs;
+              } else if (msg.type === 'message_in') {
+                const item = { ...msg.data, is_bot: false };
+                liveMessages.value.push(item);
+                if (liveMessages.value.length > 200) liveMessages.value.shift();
+                if (isMessageVisibleInCurrentFilter(item)) {
+                  scrollChatToBottom();
+                }
+              } else if (msg.type === 'message_out') {
+                const item = { ...msg.data, is_bot: true };
+                liveMessages.value.push(item);
+                if (liveMessages.value.length > 200) liveMessages.value.shift();
+                if (isMessageVisibleInCurrentFilter(item)) {
+                  scrollChatToBottom();
+                }
+              } else if (msg.type === 'social_decision') {
+                socialDecisions.value.unshift(msg.data);
+                if (socialDecisions.value.length > 50) socialDecisions.value.pop();
+              } else if (msg.type === 'state_change') {
+                characterState.value = msg.data;
+                if (!relocateForm.location) fillCurrentLocation();
+              } else if (msg.type === 'affinity_change') {
+                loadAffinityList();
+              } else if (msg.type === 'system_log') {
+                systemLogs.value.push(msg.data);
+                if (systemLogs.value.length > 500) systemLogs.value.shift();
+                scrollLogs();
+              } else if (msg.type === 'snowluma_status') {
+                if (systemStatus.value) systemStatus.value.snowLuma = msg.data;
+              } else if (msg.type === 'system_status') {
+                if (systemStatus.value && msg.data) {
+                  Object.assign(systemStatus.value, msg.data);
+                  if (msg.data.cachedImageCount !== undefined) {
+                    cachedImagesInfo.value.count = msg.data.cachedImageCount;
+                  }
+                }
+              } else if (msg.type === 'group_change') {
+                loadGroups();
+              } else if (msg.type === 'persona_switch') {
+                loadPersonas();
+                loadCharacterState();
+              } else if (msg.type === 'token_usage') {
+                loadTokenStats();
+              } else if (msg.type === 'quota_warning') {
+                if (msg.data) quotaStatus.value = msg.data;
+              }
+            } catch {}
+          };
+
+          ws.onclose = () => {
+            wsConnected.value = false;
+            setTimeout(initWebSocket, 3000);
+          };
+
+          ws.onerror = () => {
+            wsConnected.value = false;
+          };
+        }
+
+        function initDashboard() {
+          loadGroups();
+          loadPersonas();
+          loadCharacterState();
+          loadHistoryMessages();
+          loadAffinityList();
+          loadMemories();
+          loadSlangs();
+          loadTokenStats();
+          loadQuotaStatus();
+          loadSystemStatus();
+          loadSystemLogs();
+          initWebSocket();
+          setInterval(loadSystemStatus, 5000);
+          setInterval(() => loadQuotaStatus(false), 30000);
+        }
+
+        watch(messageFilterGroup, () => {
+          isUserScrolledUp.value = false;
+          hasNewMessagesBelow.value = false;
+          nextTick(() => {
+            scrollChatToBottom(true);
+          });
+        });
+
+        watch(currentTab, (val) => {
+          if (val === 'messages') {
+            nextTick(() => {
+              scrollChatToBottom(true);
+            });
+          } else if (val === 'ops') {
+            loadSystemStatus();
+          } else if (val === 'tokens') {
+            loadTokenStats();
+          }
+        });
+
+        onMounted(() => {
+          if (adminToken.value) {
+            initDashboard();
+          }
+        });
+
+        return {
+          adminToken,
+          showLoginModal,
+          loginToken,
+          handleLogin,
+          logout,
+          currentTab,
+          tabs,
+          wsConnected,
+          groups,
+          toggleGroup,
+          deleteGroup,
+          resetGroupSession,
+          openAddGroupModal,
+          openEditGroupModal,
+          showGroupModal,
+          isEditingGroup,
+          groupModalForm,
+          saveGroupModal,
+          personas,
+          activePersonaKey,
+          activePersonaDisplayName,
+          switchPersona,
+          characterState,
+          relocateForm,
+          submitRelocate,
+          selectedEditPersona,
+          selectPersonaForEdit,
+          personaCardContent,
+          loadPersonaCard,
+          savePersonaCard,
+          liveMessages,
+          filteredMessages,
+          socialDecisions,
+          messageFilterGroup,
+          quickMessageText,
+          sendQuickMessage,
+          clearLiveFeed,
+          chatScrollBox,
+          isUserScrolledUp,
+          hasNewMessagesBelow,
+          handleChatScroll,
+          scrollToBottomManual,
+          onChatMessageMediaLoad,
+          onChatMessageImgError,
+          showIntercomModal,
+          intercomForm,
+          openIntercomModal,
+          submitIntercom,
+          vaultSubTab,
+          vaultTabs,
+          affinities,
+          affinitySearch,
+          affinitySort,
+          affinityPage,
+          affinityLimit,
+          affinityTotal,
+          loadAffinityList,
+          cleanTestAffinityData,
+          clearAllAffinityData,
+          getAffinityPointsColor,
+          getAffinityBarColor,
+          getAffinityLevelClass,
+          getAffinityLevelIcon,
+          previewImageUrl,
+          openImagePreview,
+          closeImagePreview,
+          onAvatarError,
+          getValidSenderId,
+          getSenderDisplayName,
+          fillCurrentLocation,
+          resetToDefaultLocation,
+          showAffinityModal,
+          affinityForm,
+          openEditAffinityModal,
+          saveAffinityModal,
+          deleteAffinity,
+          memories,
+          deleteMemory,
+          slangs,
+          slangSearch,
+          loadSlangs,
+          showSlangModal,
+          isEditingSlang,
+          slangForm,
+          openAddSlangModal,
+          openEditSlangModal,
+          saveSlangModal,
+          deleteSlangItem,
+          tokenDays,
+          tokenStats,
+          tokenLogs,
+          loadTokenStats,
+          quotaStatus,
+          isRefreshingQuota,
+          loadQuotaStatus,
+          systemStatus,
+          cachedImagesInfo,
+          cleanImageCache,
+          systemLogs,
+          autoScrollLogs,
+          logContainer,
+          clearLogs,
+          reloadDaemonConfig,
+          restartDaemon,
+          formatUptime
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>

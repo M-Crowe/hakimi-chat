@@ -117,7 +117,7 @@ hakimi-chat/
 ### 2. 安装与配置
 克隆仓库后安装轻量依赖：
 ```bash
-git clone https://github.com/your-username/hakimi-chat.git
+git clone https://github.com/m-crowe/hakimi-chat.git
 cd hakimi-chat
 npm install
 ```

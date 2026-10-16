@@ -112,7 +112,7 @@ hakimi-chat/
 
 ### 1. 环境准备
 - **Node.js**：版本 `>= 22.5.0`（需支持原生 `node:sqlite`）。
-- **OneBot v11 客户端**：如 [SnowLuma](https://github.com/)、[NapCatQQ](https://github.com/NapNeko/NapCatQQ) 或 [Lagrange](https://github.com/LagrangeDev/Lagrange.Core)。
+- **OneBot v11 客户端**：如 [SnowLuma]([https://github.com/](https://github.com/SnowLuma/SnowLuma))。
 
 ### 2. 安装与配置
 克隆仓库后安装轻量依赖：

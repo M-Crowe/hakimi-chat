@@ -14,7 +14,7 @@
 
 ## ✨ 核心特性
 
-- 🧠 **Antigravity IDE 伴聊大脑架构**：将 Antigravity 的高智能编程/对话推理能力投射到 QQ 社交生态，实现 IDE 伴聊与多群互动的有机融合。
+- 🧠 **双大脑架构 (Antigravity & DeepSeek Harness)**：不仅原生支持 Google Antigravity IDE 伴聊，还深度适配 DeepSeek Harness (DSH)。支持一键配置 (`npm run setup:dsh`)、长轮询原子消费与原生 MCP 发信。
 - 🎭 **多人格动态切换系统**：
   - **智子 (Tomoko)**：傲娇高冷极客少女，熟悉代码梗与前沿技术。
   - **白龙娘 (Bailong)**：温婉威严的神明龙女，守护与治愈。
@@ -27,11 +27,12 @@
   - **黑白名单多群控制**：支持各群独立开关、触发率自适应调节。
 - 🖼️ **严格 FIFO 视觉上下文防爆**：
   - 本地缓存严格限制 15 张图片先进先出（FIFO）淘汰机制，杜绝视觉输入导致 Context 窗口超限与费用失控。
-- 📊 **KV Cache 缓存命中率与 Token 审计**：
-  - 内置真实大模型 Token 阶梯计费（含 Gemini、Claude 等主流模型），精确追踪 Prompt 缓存命中率与 API 成本明细。
+- 📊 **双引擎 KV Cache 命中率与 Token 审计**：
+  - 支持 Gemini、Claude 等主流模型与 **DeepSeek 官方原生 CNY 直结计费**（DeepSeek-V3 / R1 / 缓存命中节省 75%~90% / 节假日非高峰判定）。
+  - 精确追踪物理 Prompt 缓存命中率与 API 成本明细，支持分客户端独立审计。
 - 💻 **独立 Web 管理控制台 (Port 5120)**：
   - 基于 Vue 3 + Tailwind CSS + Chart.js 的开箱即用控制台。
-  - 实时 SSE 状态流、群聊启闭、人格即时热切换、聊天上下文查看与调试。
+  - 实时 SSE 状态流、群聊启闭、人格即时热切换、大脑引擎切换 (Antigravity / DSH)、聊天上下文查看与调试。
 - ⚡ **原生轻量零沉重依赖**：
   - 依托 Node.js 原生 `node:sqlite` + WAL 模式，无需安装编译 node-gyp 或外部数据库。
 
@@ -41,19 +42,28 @@
 
 ```mermaid
 flowchart TD
-    subgraph Antigravity ["Google Antigravity IDE"]
-        Skill["tomoko-bridge Skill"]
-        MCP["agy-tomoko-mcp"]
-        Agent["Antigravity Agent Brain"]
-        Skill <--> Agent
-        Agent <--> MCP
+    subgraph Brains ["双端伴聊大脑 (可选)"]
+        subgraph Antigravity ["Google Antigravity IDE"]
+            Skill["tomoko-bridge Skill"]
+            MCPAgy["agy-tomoko-mcp"]
+            AgentAgy["Antigravity Agent Brain"]
+            Skill <--> AgentAgy
+            AgentAgy <--> MCPAgy
+        end
+        subgraph DSH ["DeepSeek Harness (DSH)"]
+            Preset["tomoko-bridge Skill"]
+            MCPDsh["agy-tomoko-mcp"]
+            AgentDsh["DeepSeek Agent Brain"]
+            Preset <--> AgentDsh
+            AgentDsh <--> MCPDsh
+        end
     end
 
     subgraph HakimiCore ["Hakimi Chat 守护网关 (Node.js)"]
         IPC["IPC Server (Port 34567)"]
         WebUI["Web Dashboard (Port 5120)"]
         Engine["Core State Engine (node:sqlite)"]
-        Cache["KV Cache / Token Auditor"]
+        Cache["KV Cache / Dual Token Auditor"]
         Visual["Image FIFO Pool (Max 15)"]
         
         IPC <--> Engine
@@ -68,7 +78,8 @@ flowchart TD
         OneBot <--> QQUsers
     end
 
-    MCP <==>|"HTTP / IPC"| IPC
+    MCPAgy <==>|"HTTP / IPC"| IPC
+    MCPDsh <==>|"HTTP / IPC"| IPC
     HakimiCore <==>|"WebSocket"| OneBot
 ```
 
@@ -183,20 +194,37 @@ npm start
 
 ---
 
-## 🧩 Antigravity IDE 联动
+## 🧩 大脑联动方式
 
+### 方式 A：Google Antigravity IDE 联动
 1. 将本项目的 `.agents/skills/tomoko-bridge` 引入你的工作区或全局 Agent Skills 目录。
 2. 在 Antigravity 对话界面中输入：
    > `一键启动哈基米聊天系统`
 3. Antigravity 将自动激活伴聊循环，通过内部 IPC 网关（`http://127.0.0.1:34567`）与 QQ 群消息形成实时闭环。
 
+### 方式 B：DeepSeek Harness (DSH) 联动
+1. 在项目根目录执行一键配置脚本（自动在 `~/.dsh` 注册 MCP 服务与伴聊 Skill）：
+   ```bash
+   npm run setup:dsh
+   ```
+2. 打开 DeepSeek Harness 桌面客户端，打开本项目目录 `D:\dsh\agy\hakimi-chat`。
+3. 在 DSH 对话框中发送：
+   > `一键启动哈基米聊天系统，人设使用 tomoko，进入伴聊响应循环`
+   DSH 将自动执行长轮询脚本监听 QQ 消息，并通过原生 MCP 发信。
+4. 详见完整文档：[docs/DSH_INTEGRATION.md](docs/DSH_INTEGRATION.md)。
+
 ---
 
 ## 🧪 自动化测试
 
-运行内置全量测试套件（覆盖数据库、Web API、Token 计算与模拟群聊拦截）：
+运行内置全量测试套件（覆盖数据库、Web API、Token 计费、DSH 双端集成与模拟群聊拦截）：
 ```bash
+# 全量测试
 npm test
+
+# 专门测试 DSH 计费与双端审计
+npm run test-dsh
+```
 ```
 
 ---

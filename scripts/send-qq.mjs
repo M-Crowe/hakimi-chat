@@ -1,16 +1,34 @@
 import fs from "node:fs";
 
-let [targetType, targetId, message, senderId] = process.argv.slice(2);
+let customClient = process.env.CLIENT || (process.env.DSH_HOME ? "dsh" : null);
+let customModel = process.env.MODEL_NAME || null;
+const cleanArgs = [];
+for (let i = 2; i < process.argv.length; i++) {
+  const arg = process.argv[i];
+  if (arg.startsWith("--client=")) {
+    customClient = arg.slice(9).trim();
+  } else if (arg === "--client" && i + 1 < process.argv.length) {
+    customClient = process.argv[++i].trim();
+  } else if (arg.startsWith("--model=")) {
+    customModel = arg.slice(8).trim();
+  } else if (arg === "--model" && i + 1 < process.argv.length) {
+    customModel = process.argv[++i].trim();
+  } else {
+    cleanArgs.push(arg);
+  }
+}
+
+let [targetType, targetId, message, senderId] = cleanArgs;
 
 // 如果包含更多的切片（由于 PowerShell 换行切开了参数），自动将它们拼接回 message
-if (process.argv.length > 5) {
+if (cleanArgs.length > 4) {
   // 如果最后一个参数是纯数字 QQ 号
-  const lastArg = process.argv[process.argv.length - 1];
+  const lastArg = cleanArgs[cleanArgs.length - 1];
   if (/^\d+$/.test(lastArg)) {
     senderId = lastArg;
-    message = process.argv.slice(4, -1).join("\n");
+    message = cleanArgs.slice(2, -1).join("\n");
   } else {
-    message = process.argv.slice(4).join("\n");
+    message = cleanArgs.slice(2).join("\n");
   }
 }
 
@@ -26,7 +44,7 @@ if (message) {
 }
 
 if (!targetType || !targetId || !message) {
-  console.error("用法: node scripts/send-qq.mjs <group|private> <targetId> <message> [senderId]");
+  console.error("用法: node scripts/send-qq.mjs <group|private> <targetId> <message> [senderId] [--client=dsh] [--model=deepseek-flash]");
   process.exit(1);
 }
 
@@ -45,7 +63,9 @@ try {
       targetId: Number(targetId),
       message,
       senderId: senderId ? Number(senderId) : undefined,
-      sessionKey: `${targetType}:${targetId}`
+      sessionKey: `${targetType}:${targetId}`,
+      client: customClient || undefined,
+      modelName: customModel || undefined
     })
   });
   const data = await res.json();

@@ -41,6 +41,7 @@ import {
   savePersonaPrompt
 } from "./personas.mjs";
 import { loadPricingConfig, savePricingConfig } from "./pricing.mjs";
+import { getDshBrainTokenStats, getDshSessions, isDshAvailable } from "./dsh-discovery.mjs";
 import crypto from "node:crypto";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -487,15 +488,19 @@ export function createWebServer({ config, eventBus, daemonApi }) {
       const days = Number(req.query.days) || 7;
       const groupId = req.query.groupId ? Number(req.query.groupId) : null;
       const persona = req.query.persona || null;
+      const client = req.query.client || null;
       const conversationId = req.query.conversationId || null;
-      const stats = getTokenUsageStats({ days, groupId, persona });
+      const dshSessionId = req.query.dshSessionId || null;
+      const stats = getTokenUsageStats({ days, groupId, persona, client });
       const brainStats = await getAntigravityBrainTokenStats({ days, conversationId });
+      const dshStats = await getDshBrainTokenStats({ days, sessionId: dshSessionId });
       res.json({
         success: true,
         days,
         data: {
           ...stats,
-          antigravityBrain: brainStats
+          antigravityBrain: brainStats,
+          dshBrain: dshStats
         }
       });
     } catch (err) {
@@ -506,9 +511,50 @@ export function createWebServer({ config, eventBus, daemonApi }) {
   app.get("/api/tokens/brain", async (req, res) => {
     try {
       const days = Number(req.query.days) || 7;
+      const clientType = String(req.query.client || "antigravity").toLowerCase().trim();
       const conversationId = req.query.conversationId || null;
+      const dshSessionId = req.query.dshSessionId || req.query.sessionId || null;
+
+      if (clientType === "dsh") {
+        const dshStats = await getDshBrainTokenStats({ days, sessionId: dshSessionId });
+        return res.json({ success: true, data: dshStats });
+      }
+
+      if (clientType === "all" || clientType === "both") {
+        const brainStats = await getAntigravityBrainTokenStats({ days, conversationId });
+        const dshStats = await getDshBrainTokenStats({ days, sessionId: dshSessionId });
+        return res.json({
+          success: true,
+          data: {
+            antigravity: brainStats,
+            dsh: dshStats
+          }
+        });
+      }
+
       const brainStats = await getAntigravityBrainTokenStats({ days, conversationId });
       res.json({ success: true, data: brainStats });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // 6.1 DSH (DeepSeek Harness) 专用用量与会话接口
+  app.get("/api/dsh/stats", async (req, res) => {
+    try {
+      const days = Number(req.query.days) || 7;
+      const sessionId = req.query.sessionId || null;
+      const dshStats = await getDshBrainTokenStats({ days, sessionId });
+      res.json({ success: true, data: dshStats });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.get("/api/dsh/sessions", (req, res) => {
+    try {
+      const sessions = getDshSessions();
+      res.json({ success: true, count: sessions.length, data: sessions });
     } catch (err) {
       res.status(500).json({ success: false, error: err.message });
     }
@@ -519,7 +565,8 @@ export function createWebServer({ config, eventBus, daemonApi }) {
       const limit = Number(req.query.limit) || 100;
       const excludeTest = req.query.excludeTest === "true" || req.query.clean === "true";
       const groupId = req.query.groupId ? Number(req.query.groupId) : null;
-      const logs = getRecentTokenLogs(limit, { excludeTest, groupId });
+      const client = req.query.client || null;
+      const logs = getRecentTokenLogs(limit, { excludeTest, groupId, client });
       res.json({ success: true, data: logs });
     } catch (err) {
       res.status(500).json({ success: false, error: err.message });
@@ -535,7 +582,7 @@ export function createWebServer({ config, eventBus, daemonApi }) {
     }
   });
 
-  // 6.1 Antigravity 配额防爆健康看板 (Loopback Quota & Smart Anti-Exhaustion)
+  // 6.2 Antigravity 配额防爆健康看板 (Loopback Quota & Smart Anti-Exhaustion)
   app.get("/api/antigravity/quota", async (req, res) => {
     try {
       const forceRefresh = req.query.refresh === "true" || req.query.force === "true";

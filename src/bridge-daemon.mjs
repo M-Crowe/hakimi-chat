@@ -95,6 +95,7 @@ const configPath = path.resolve(PROJECT_ROOT, "config.json");
 const DEFAULT_CONFIG = {
   snowLuma: { wsUrl: "ws://127.0.0.1:3000/", botQqId: 123456789, adminQqIds: [987654321] },
   antigravity: { lsAddress: "http://127.0.0.1:6714", agentPreset: "tomoko", maxTurns: 30 },
+  dsh: { enabled: true, home: "", defaultModel: "deepseek-flash", agentPreset: "tomoko" },
   daemon: { internalHttpPort: 34567, silentBufferLimit: 8, patrolMinMinutes: 3, patrolMaxMinutes: 8 },
   web: { port: 5120, adminToken: "hakimi-admin-token-2026", cors: true },
   chatBehavior: {
@@ -422,10 +423,11 @@ const internalServer = http.createServer((req, res) => {
         if (s && s.lastPromptTime) {
           s.lastPromptTime = 0; // 及时消费重置，避免后续非请求消息复用陈旧耗时
         }
-        const modelName = data.modelName || data.model_name || config.antigravity?.modelName || "gemini-2.5-pro";
+        const client = data.client || (data.isDsh ? "dsh" : "antigravity");
+        const modelName = data.modelName || data.model_name || (client === "dsh" ? (config.dsh?.defaultModel || "deepseek-flash") : (config.antigravity?.modelName || "gemini-2.5-pro"));
 
         // 在发给 QQ 之前，执行【标签拦截器】过滤与入库
-        const cleanedMessage = processOutboundMessage(sessionKey, senderId, data.message, { durationMs, modelName });
+        const cleanedMessage = processOutboundMessage(sessionKey, senderId, data.message, { durationMs, modelName, client });
         let delivered = false;
         const isSilent = /ACTION:\s*DIVE/i.test(data.message || "") || /\[SILENT\]/i.test(data.message || "");
         if (cleanedMessage.trim()) {
@@ -477,10 +479,13 @@ function recordOutboundTokenUsage(sessionKey, rawMessage, meta = {}) {
     const durationMs = meta.durationMs || 0;
     const reasoningTokens = meta.reasoningTokens || 0;
 
+    const client = meta.client || (modelName && modelName.toLowerCase().includes("deepseek") ? "dsh" : "antigravity");
+
     const tokenRecord = recordTokenUsage({
       sessionKey: sessionKey || "",
       groupId: gid,
       persona: activePreset,
+      client,
       promptText,
       replyText: rawMessage || "",
       reasoningTokens,

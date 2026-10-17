@@ -45,15 +45,63 @@
     },
     "deepseek-v3": {
       "name": "DeepSeek V3",
+      "useCnyDirect": true,
       "inputPerM": 0.14,
       "cachedInputPerM": 0.014,
-      "outputPerM": 0.28
+      "outputPerM": 0.28,
+      "cnyInputPerM": 1,
+      "cnyCachedInputPerM": 0.1,
+      "cnyOutputPerM": 2
+    },
+    "deepseek-chat": {
+      "name": "DeepSeek Chat (V3)",
+      "useCnyDirect": true,
+      "inputPerM": 0.14,
+      "cachedInputPerM": 0.014,
+      "outputPerM": 0.28,
+      "cnyInputPerM": 1,
+      "cnyCachedInputPerM": 0.1,
+      "cnyOutputPerM": 2
     },
     "deepseek-r1": {
       "name": "DeepSeek R1",
+      "useCnyDirect": true,
       "inputPerM": 0.55,
       "cachedInputPerM": 0.14,
-      "outputPerM": 2.19
+      "outputPerM": 2.19,
+      "cnyInputPerM": 4,
+      "cnyCachedInputPerM": 1,
+      "cnyOutputPerM": 16
+    },
+    "deepseek-reasoner": {
+      "name": "DeepSeek Reasoner (R1)",
+      "useCnyDirect": true,
+      "inputPerM": 0.55,
+      "cachedInputPerM": 0.14,
+      "outputPerM": 2.19,
+      "cnyInputPerM": 4,
+      "cnyCachedInputPerM": 1,
+      "cnyOutputPerM": 16
+    },
+    "deepseek-flash": {
+      "name": "DeepSeek V4.1 Flash",
+      "useCnyDirect": true,
+      "inputPerM": 0.137931,
+      "cachedInputPerM": 0.002759,
+      "outputPerM": 0.551724,
+      "cnyInputPerM": 1,
+      "cnyCachedInputPerM": 0.02,
+      "cnyOutputPerM": 4
+    },
+    "deepseek-pro": {
+      "name": "DeepSeek V4 Pro",
+      "useCnyDirect": true,
+      "inputPerM": 0.62069,
+      "cachedInputPerM": 0.02069,
+      "outputPerM": 1.862069,
+      "cnyInputPerM": 4.5,
+      "cnyCachedInputPerM": 0.15,
+      "cnyOutputPerM": 13.5
     },
     "gpt-4o": {
       "name": "GPT-4o",

@@ -194,6 +194,9 @@ try {
 try {
   db.exec("ALTER TABLE token_usage ADD COLUMN model_name TEXT DEFAULT '';");
 } catch {}
+try {
+  db.exec("ALTER TABLE token_usage ADD COLUMN client TEXT DEFAULT 'antigravity';");
+} catch {}
 
 
 // 初始化各已知人设的专属时空状态基准
@@ -764,6 +767,7 @@ export function recordTokenUsage({
   sessionKey = "",
   groupId = 0,
   persona = "tomoko",
+  client = "antigravity",
   promptText = "",
   replyText = "",
   promptChars = 0,
@@ -875,6 +879,8 @@ export function recordTokenUsage({
   if (cUsd === null) cUsd = costObj.costUsd;
   mName = costObj.modelName;
 
+    const effectiveClient = String(client || (mName && mName.toLowerCase().includes("deepseek") ? "dsh" : "antigravity")).trim();
+
   runWithRetry(() => {
     const stmt = db.prepare(`
       INSERT INTO token_usage (
@@ -884,8 +890,8 @@ export function recordTokenUsage({
         reasoning_tokens, duration_ms, throughput_tps,
         cost_cny, cost_usd, model_name,
         cached_tokens, new_tokens, cache_hit_rate,
-        total_tokens
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        total_tokens, client
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       sessionKey, gid, persona,
@@ -894,7 +900,7 @@ export function recordTokenUsage({
       rReasoning, dMs, tps,
       cCny, cUsd, mName,
       calculatedCachedTokens, calculatedNewTokens, finalHitRate,
-      totalTokens
+      totalTokens, effectiveClient
     );
   });
 
@@ -902,6 +908,7 @@ export function recordTokenUsage({
     sessionKey,
     groupId: gid,
     persona,
+    client: effectiveClient,
     promptChars: pChars,
     replyChars: rChars,
     promptTokens: pTokens,
@@ -920,9 +927,9 @@ export function recordTokenUsage({
 }
 
 /**
- * 获取 Token 监测统计汇总（支持按天数、群组、人设聚合筛选，包含缓存命中率、推理Token、吞吐与成本估算）
+ * 获取 Token 监测统计汇总（支持按天数、群组、人设、客户端聚合筛选，包含缓存命中率、推理Token、吞吐与成本估算）
  */
-export function getTokenUsageStats({ days = 7, groupId = null, persona = null } = {}) {
+export function getTokenUsageStats({ days = 7, groupId = null, persona = null, client = null } = {}) {
   const daysNum = Math.max(1, parseInt(days, 10) || 7);
   const sinceClause = `datetime('now', '-${daysNum} days')`;
 
@@ -935,6 +942,10 @@ export function getTokenUsageStats({ days = 7, groupId = null, persona = null } 
   if (persona) {
     whereClauses.push("persona = ?");
     params.push(persona);
+  }
+  if (client && String(client).toLowerCase() !== "all" && String(client).toLowerCase() !== "both") {
+    whereClauses.push("client = ?");
+    params.push(String(client).toLowerCase());
   }
   const whereSql = whereClauses.length ? `WHERE ${whereClauses.join(" AND ")}` : "";
 
@@ -1054,7 +1065,7 @@ export function getTokenUsageStats({ days = 7, groupId = null, persona = null } 
 /**
  * 获取最近 Token 流水记录（包含缓存、思考Token、吞吐与成本）
  */
-export function getRecentTokenLogs(limit = 50, { excludeTest = false, groupId = null } = {}) {
+export function getRecentTokenLogs(limit = 50, { excludeTest = false, groupId = null, client = null } = {}) {
   const whereClauses = [];
   const params = [];
   if (excludeTest) {
@@ -1064,10 +1075,14 @@ export function getRecentTokenLogs(limit = 50, { excludeTest = false, groupId = 
     whereClauses.push("group_id = ?");
     params.push(Number(groupId));
   }
+  if (client && String(client).toLowerCase() !== "all" && String(client).toLowerCase() !== "both") {
+    whereClauses.push("client = ?");
+    params.push(String(client).toLowerCase());
+  }
   const whereSql = whereClauses.length ? `WHERE ${whereClauses.join(" AND ")}` : "";
   params.push(limit);
   return db.prepare(`
-    SELECT id, session_key, group_id, persona, prompt_chars, reply_chars,
+    SELECT id, session_key, group_id, persona, client, prompt_chars, reply_chars,
            estimated_prompt_tokens, estimated_reply_tokens,
            reasoning_tokens, duration_ms, throughput_tps,
            cost_cny, cost_usd, model_name,

@@ -1071,33 +1071,58 @@
           <div class="flex flex-wrap items-center justify-between gap-4 mb-4 relative z-10">
             <div class="flex items-center space-x-3.5">
               <div class="w-11 h-11 rounded-lg bg-gradient-to-b from-[#2a3854] to-[#121927] border border-[#40567a] flex items-center justify-center text-2xl shadow-lg relative">
-                <span class="filter drop-shadow-[0_0_8px_rgba(245,158,11,0.8)]">🤖</span>
+                <span class="filter drop-shadow-[0_0_8px_rgba(245,158,11,0.8)]">{{ brainEngine === 'dsh' ? '🧠' : '🤖' }}</span>
               </div>
               <div>
                 <div class="flex items-center space-x-2.5">
-                  <h3 class="text-base font-avionics font-bold text-white tracking-wide">ANTIGRAVITY 伴聊大脑物理用量</h3>
+                  <h3 class="text-base font-avionics font-bold text-white tracking-wide">
+                    {{ brainEngine === 'dsh' ? 'DSH (DEEPSEEK HARNESS) 伴聊大脑物理用量' : 'ANTIGRAVITY 伴聊大脑物理用量' }}
+                  </h3>
                   <span class="mil-label font-telemetry font-bold border-amber-500/60 text-amber-300 bg-amber-950/40 glow-amber">
-                    ● IDE TOKEN MONITOR 实时同步
+                    ● {{ brainEngine === 'dsh' ? 'DSH PROJCACHE 实时同步' : 'IDE TOKEN MONITOR 实时同步' }}
                   </span>
-                  <span v-if="tokenStats.antigravityBrain?.title" class="mil-label border-cyan-500/40 text-cyan-300 bg-cyan-950/40 font-telemetry truncate max-w-[240px]">
-                    会话: {{ tokenStats.antigravityBrain.title }}
+                  <span v-if="currentBrain?.title" class="mil-label border-cyan-500/40 text-cyan-300 bg-cyan-950/40 font-telemetry truncate max-w-[240px]">
+                    会话: {{ currentBrain.title }}
+                  </span>
+                  <span v-if="brainEngine === 'dsh' && currentBrain?.modelName" class="mil-label border-emerald-500/40 text-emerald-300 bg-emerald-950/40 font-telemetry truncate">
+                    {{ currentBrain.modelName }}
                   </span>
                 </div>
                 <p class="text-xs text-slate-400 mt-1 font-telemetry">
-                  TRANSCRIPT 物理遥测 // 包含完整 SYSTEM PROMPT、MCP 工具树与 GOOGLE KV CACHE 高速复用
+                  {{ brainEngine === 'dsh'
+                    ? 'DEEPSEEK 物理遥测 // 支持 DEEPSEEK-V3/R1/FLASH 阶梯价格、KV CACHE 提示词缓存与本地会话审计'
+                    : 'TRANSCRIPT 物理遥测 // 包含完整 SYSTEM PROMPT、MCP 工具树与 GOOGLE KV CACHE 高速复用' }}
                 </p>
               </div>
             </div>
 
-            <!-- View Mode Switch Pills -->
-            <div class="flex items-center space-x-2 font-telemetry">
+            <!-- View Mode Switch Pills & Brain Engine Switcher -->
+            <div class="flex flex-wrap items-center gap-2 font-telemetry">
+              <!-- Engine Selector -->
+              <span class="text-xs text-slate-400 mr-1">大脑客户端:</span>
+              <div class="inline-flex rounded-lg p-1 bg-[#090d16] border border-[#202b3f] mr-1">
+                <button @click="brainEngine = 'antigravity'"
+                        class="px-2.5 py-1 rounded text-xs font-avionics transition-colors flex items-center space-x-1"
+                        :class="brainEngine === 'antigravity' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50 glow-amber font-bold' : 'text-slate-400 hover:text-slate-200'">
+                  <span>🤖</span>
+                  <span>Antigravity</span>
+                </button>
+                <button @click="brainEngine = 'dsh'"
+                        class="px-2.5 py-1 rounded text-xs font-avionics transition-colors flex items-center space-x-1"
+                        :class="brainEngine === 'dsh' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 glow-cyan font-bold' : 'text-slate-400 hover:text-slate-200'">
+                  <span>🧠</span>
+                  <span>DSH (DeepSeek)</span>
+                </button>
+              </div>
+
+              <!-- View Mode Switch Pills -->
               <span class="text-xs text-slate-400 mr-1">视图维度:</span>
               <div class="inline-flex rounded-lg p-1 bg-[#090d16] border border-[#202b3f]">
                 <button @click="setTokenViewMode('physical')"
                         class="px-3 py-1 rounded text-xs font-avionics transition-colors flex items-center space-x-1.5"
                         :class="tokenViewMode === 'physical' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50 glow-amber font-bold' : 'text-slate-400 hover:text-slate-200'">
-                  <span>🤖</span>
-                  <span>物理交互总量 (IDE {{ ((tokenStats.antigravityBrain?.totalTokens || 0) / 1000000).toFixed(2) }}M)</span>
+                  <span>{{ brainEngine === 'dsh' ? '🧠' : '🤖' }}</span>
+                  <span>物理交互总量 ({{ brainEngine === 'dsh' ? 'DSH' : 'IDE' }} {{ ((currentBrain?.totalTokens || 0) / 1000000).toFixed(2) }}M)</span>
                 </button>
                 <button @click="setTokenViewMode('payload')"
                         class="px-3 py-1 rounded text-xs font-avionics transition-colors flex items-center space-x-1.5"
@@ -1118,11 +1143,11 @@
             <div class="bg-[#05070d] rounded-lg p-3.5 border border-[#1e293b] space-y-1 relative">
               <div class="mil-label text-amber-400">TOTAL PHYSICAL TOKENS</div>
               <div class="text-2xl font-bold font-telemetry glow-amber mt-1">
-                {{ (tokenStats.antigravityBrain?.totalTokens || 0).toLocaleString() }}
+                {{ (currentBrain?.totalTokens || 0).toLocaleString() }}
               </div>
               <div class="text-[11px] text-amber-300/80 font-telemetry flex items-center justify-between pt-1 border-t border-[#1a2336]">
-                <span>IDE 对应总量:</span>
-                <span class="font-bold">~{{ ((tokenStats.antigravityBrain?.totalTokens || 0) / 1000000).toFixed(2) }}M</span>
+                <span>{{ brainEngine === 'dsh' ? 'DSH 真实总量:' : 'IDE 对应总量:' }}</span>
+                <span class="font-bold">~{{ ((currentBrain?.totalTokens || 0) / 1000000).toFixed(2) }}M</span>
               </div>
             </div>
 
@@ -1130,11 +1155,11 @@
             <div class="bg-[#05070d] rounded-lg p-3.5 border border-[#1e293b] space-y-1 relative">
               <div class="mil-label text-cyan-400">KV CACHE 复用命中</div>
               <div class="text-2xl font-bold font-telemetry glow-cyan mt-1">
-                {{ (tokenStats.antigravityBrain?.cachedTokens || 0).toLocaleString() }}
+                {{ (currentBrain?.cachedTokens || 0).toLocaleString() }}
               </div>
               <div class="text-[11px] text-cyan-300/80 font-telemetry flex items-center justify-between pt-1 border-t border-[#1a2336]">
                 <span>缓存复用率:</span>
-                <span class="font-bold">{{ tokenStats.antigravityBrain?.cacheHitPercent || '0.0' }}%</span>
+                <span class="font-bold">{{ currentBrain?.cacheHitPercent || '0.0' }}%</span>
               </div>
             </div>
 
@@ -1142,11 +1167,11 @@
             <div class="bg-[#05070d] rounded-lg p-3.5 border border-[#1e293b] space-y-1 relative">
               <div class="mil-label text-slate-300">NEW PROMPT INPUT</div>
               <div class="text-2xl font-bold font-telemetry text-slate-100 mt-1">
-                {{ (tokenStats.antigravityBrain?.inputTokens || 0).toLocaleString() }}
+                {{ (currentBrain?.inputTokens || 0).toLocaleString() }}
               </div>
               <div class="text-[11px] text-slate-400 font-telemetry flex items-center justify-between pt-1 border-t border-[#1a2336]">
                 <span>提示词增量:</span>
-                <span class="font-bold">~{{ ((tokenStats.antigravityBrain?.inputTokens || 0) / 1000).toFixed(1) }}k</span>
+                <span class="font-bold">~{{ ((currentBrain?.inputTokens || 0) / 1000).toFixed(1) }}k</span>
               </div>
             </div>
 
@@ -1154,23 +1179,25 @@
             <div class="bg-[#05070d] rounded-lg p-3.5 border border-[#1e293b] space-y-1 relative">
               <div class="mil-label text-purple-400">MODEL OUTPUT 生成</div>
               <div class="text-2xl font-bold font-telemetry text-purple-300 mt-1" style="text-shadow: 0 0 8px rgba(192,132,252,0.6)">
-                {{ (tokenStats.antigravityBrain?.outputTokens || 0).toLocaleString() }}
+                {{ (currentBrain?.outputTokens || 0).toLocaleString() }}
               </div>
               <div class="text-[11px] text-purple-300/80 font-telemetry flex items-center justify-between pt-1 border-t border-[#1a2336]">
                 <span>生成 Token 占比:</span>
-                <span class="font-bold">{{ tokenStats.antigravityBrain?.totalTokens ? ((tokenStats.antigravityBrain.outputTokens / tokenStats.antigravityBrain.totalTokens) * 100).toFixed(2) : 0 }}%</span>
+                <span class="font-bold">{{ currentBrain?.totalTokens ? ((currentBrain.outputTokens / currentBrain.totalTokens) * 100).toFixed(2) : 0 }}%</span>
               </div>
             </div>
 
             <!-- 5. Turns & Est Cost -->
             <div class="bg-[#05070d] rounded-lg p-3.5 border border-[#1e293b] space-y-1 relative">
-              <div class="mil-label text-emerald-400">EXEC TURNS 物理步数</div>
+              <div class="mil-label text-emerald-400">
+                {{ brainEngine === 'dsh' ? 'DSH 交互轮/步数' : 'EXEC TURNS 物理步数' }}
+              </div>
               <div class="text-2xl font-bold font-telemetry glow-green mt-1">
-                {{ tokenStats.antigravityBrain?.steps || 0 }} <span class="text-xs font-normal">步</span>
+                {{ brainEngine === 'dsh' ? ((currentBrain?.turns || 0) + ' 轮 / ' + (currentBrain?.steps || 0) + ' 步') : ((currentBrain?.steps || 0) + ' 步') }}
               </div>
               <div class="text-[11px] text-emerald-300/80 font-telemetry flex items-center justify-between pt-1 border-t border-[#1a2336]">
                 <span>预估计费:</span>
-                <span class="font-bold">¥{{ Number(tokenStats.antigravityBrain?.costCny || 0).toFixed(4) }}</span>
+                <span class="font-bold">¥{{ Number(currentBrain?.costCny || 0).toFixed(4) }}</span>
               </div>
             </div>
           </div>
@@ -1181,19 +1208,21 @@
               <span class="text-base leading-none">💡</span>
               <div class="space-y-1.5 flex-1">
                 <div class="font-avionics font-bold text-slate-200 tracking-wide flex items-center space-x-2">
-                  <span>为什么 IDE TOKEN MONITOR 显示 3.7M~4.2M，而 QQ 消息纯文本仅 0.24M？</span>
+                  <span>{{ brainEngine === 'dsh' ? 'DSH (DeepSeek Harness) 物理会话与 KV Cache 审计' : '为什么 IDE TOKEN MONITOR 显示 3.7M~4.2M，而 QQ 消息纯文本仅 0.24M？' }}</span>
                   <button @click="showBrainSteps = !showBrainSteps" class="text-amber-400 hover:text-amber-300 underline font-normal text-[11px] ml-auto">
-                    {{ showBrainSteps ? '收起物理执行流水 ▲' : '查看最近物理交互流水 (' + (tokenStats.antigravityBrain?.recentSteps?.length || 0) + ' 步) ▼' }}
+                    {{ showBrainSteps ? '收起详情 ▲' : (brainEngine === 'dsh' ? '查看 DSH 会话明细 (' + (currentBrain?.sessions?.length || 0) + ' 个会话) ▼' : '查看最近物理交互流水 (' + (currentBrain?.recentSteps?.length || 0) + ' 步) ▼') }}
                   </button>
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-slate-400 text-[11px] leading-relaxed pt-1">
                   <div class="slot-inset p-2.5 rounded border border-[#1b263b]">
                     <div class="text-amber-300 font-bold mb-1 flex items-center space-x-1">
-                      <span>🤖</span>
-                      <span>IDE Token Monitor 物理用量 ({{ ((tokenStats.antigravityBrain?.totalTokens || 0) / 1000000).toFixed(2) }}M)</span>
+                      <span>{{ brainEngine === 'dsh' ? '🧠' : '🤖' }}</span>
+                      <span>{{ brainEngine === 'dsh' ? 'DSH 物理用量与计费' : 'IDE Token Monitor 物理用量' }} ({{ ((currentBrain?.totalTokens || 0) / 1000000).toFixed(2) }}M)</span>
                     </div>
                     <div>
-                      由 Antigravity Agent 底层直接与 Gemini 大模型通信产生。每轮包含庞大的 System Prompt 人设、MCP 工具集定义（qq_send_message 等）以及多轮会话记忆。其中 <strong class="text-cyan-300">{{ tokenStats.antigravityBrain?.cacheHitPercent || '86+' }}%</strong> 由 Google KV Cache 免重复计算命中。
+                      {{ brainEngine === 'dsh'
+                        ? '由 DSH 客户端底层直接与 DeepSeek 大模型通信产生。每轮包含 System Prompt 人设规范、MCP 工具树（qq_send_message 等）以及历史滚动记忆。其中 ' + (currentBrain?.cacheHitPercent || '90+') + '% 由 DeepSeek 官方 KV Cache 提示词缓存命中，享受 1 折甚至更低阶梯折扣。'
+                        : '由 Antigravity Agent 底层直接与 Gemini 大模型通信产生。每轮包含庞大的 System Prompt 人设、MCP 工具集定义（qq_send_message 等）以及多轮会话记忆。其中 ' + (currentBrain?.cacheHitPercent || '86+') + '% 由 Google KV Cache 免重复计算命中。' }}
                     </div>
                   </div>
                   <div class="slot-inset p-2.5 rounded border border-[#1b263b]">
@@ -1202,15 +1231,53 @@
                       <span>QQ 消息纯文本载荷 ({{ ((tokenStats.summary?.total_tokens || 0) / 1000000).toFixed(2) }}M / {{ (tokenStats.summary?.total_tokens || 0).toLocaleString() }} T)</span>
                     </div>
                     <div>
-                      仅对 QQ 群聊收发的 200+ 条原始聊天文字按 1.65 Token/字折算（纯文本载荷）。用于评估用户聊天的文字体量，不包含底层 Agent 运行时的巨量上下文。
+                      仅对 QQ 群聊收发的原始聊天文字按 1.65 Token/字折算（纯文本载荷）。用于评估用户聊天的文字体量，不包含底层 Agent 运行时的巨量上下文。
                     </div>
                   </div>
                 </div>
               </div>
             </div>
 
-            <!-- Recent Brain Steps Table (Collapsible) -->
-            <div v-if="showBrainSteps && tokenStats.antigravityBrain?.recentSteps" class="mt-3 pt-3 border-t border-[#1b263b] overflow-x-auto">
+            <!-- DSH Sessions Table (Collapsible) -->
+            <div v-if="showBrainSteps && brainEngine === 'dsh' && currentBrain?.sessions" class="mt-3 pt-3 border-t border-[#1b263b] overflow-x-auto">
+              <div class="text-[11px] font-avionics text-slate-300 font-bold mb-2">DSH 本地会话 Token 用量与成本清单 (DSH SESSION PROJECTIONS)</div>
+              <table class="w-full text-[11px] font-telemetry">
+                <thead>
+                  <tr class="text-slate-400 border-b border-[#202b3f] text-left">
+                    <th class="py-1 px-2">会话标题 / ID</th>
+                    <th class="py-1 px-2">模型</th>
+                    <th class="py-1 px-2">物理总 Tokens</th>
+                    <th class="py-1 px-2">KV Cache 命中</th>
+                    <th class="py-1 px-2">未命中输入</th>
+                    <th class="py-1 px-2">输出</th>
+                    <th class="py-1 px-2">预估成本 (CNY)</th>
+                    <th class="py-1 px-2">轮数/步数</th>
+                    <th class="py-1 px-2">活跃时间</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-[#182234]">
+                  <tr v-for="s in currentBrain.sessions" :key="s.sessionId" class="hover:bg-slate-800/40" :class="s.isCompanion ? 'bg-cyan-950/20' : ''">
+                    <td class="py-1 px-2 font-bold max-w-[220px] truncate" :title="s.title">
+                      <span v-if="s.isCompanion" class="text-amber-400 mr-1">🐱</span>
+                      <span :class="s.isCompanion ? 'text-cyan-300' : 'text-slate-200'">{{ s.title }}</span>
+                    </td>
+                    <td class="py-1 px-2 text-slate-300">
+                      <span class="px-1.5 py-0.5 rounded text-[10px] bg-slate-800 border border-slate-700 text-emerald-300">{{ s.model }}</span>
+                    </td>
+                    <td class="py-1 px-2 text-slate-100 font-bold">{{ s.totalTokens.toLocaleString() }}</td>
+                    <td class="py-1 px-2 text-cyan-400">{{ s.cachedTokens.toLocaleString() }} ({{ s.cacheHitPercent }}%)</td>
+                    <td class="py-1 px-2 text-slate-300">{{ s.uncachedInputTokens.toLocaleString() }}</td>
+                    <td class="py-1 px-2 text-purple-300">{{ s.outputTokens.toLocaleString() }}</td>
+                    <td class="py-1 px-2 text-emerald-400 font-bold">¥{{ Number(s.costCny).toFixed(4) }}</td>
+                    <td class="py-1 px-2 text-slate-400">{{ s.turns }}轮 / {{ s.steps }}步</td>
+                    <td class="py-1 px-2 text-slate-400">{{ s.lastModified ? s.lastModified.slice(5, 16).replace('T', ' ') : '--' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Antigravity Steps Table (Collapsible) -->
+            <div v-if="showBrainSteps && brainEngine === 'antigravity' && currentBrain?.recentSteps" class="mt-3 pt-3 border-t border-[#1b263b] overflow-x-auto">
               <div class="text-[11px] font-avionics text-slate-300 font-bold mb-2">最近物理 LLM 交互步数列表 (LATEST TRANSCRIPT STEPS)</div>
               <table class="w-full text-[11px] font-telemetry">
                 <thead>
@@ -1225,7 +1292,7 @@
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-[#182234]">
-                  <tr v-for="step in tokenStats.antigravityBrain.recentSteps" :key="step.step_index" class="hover:bg-slate-800/40">
+                  <tr v-for="step in currentBrain.recentSteps" :key="step.step_index" class="hover:bg-slate-800/40">
                     <td class="py-1 px-2 text-amber-400 font-bold">#{{ step.step_index }}</td>
                     <td class="py-1 px-2 text-slate-400">{{ (step.created_at || '').slice(11, 19) }}</td>
                     <td class="py-1 px-2 text-slate-100 font-bold">{{ step.total_tokens.toLocaleString() }}</td>
@@ -1250,14 +1317,14 @@
           <!-- Total Tokens -->
           <div class="rack-card rounded-lg p-3 border border-[#253147] relative">
             <div class="mil-label text-slate-400">
-              TOTAL TOKENS <span class="text-[9px] font-bold" :class="tokenViewMode === 'physical' ? (tokenStats.antigravityBrain?.totalTokens ? 'text-amber-400' : 'text-amber-500/80') : 'text-cyan-400'">[{{ tokenViewMode === 'physical' ? (tokenStats.antigravityBrain?.totalTokens ? '物理用量' : '待重启生效') : '消息文本' }}]</span>
+              TOTAL TOKENS <span class="text-[9px] font-bold" :class="tokenViewMode === 'physical' ? (currentBrain?.totalTokens ? 'text-amber-400' : 'text-amber-500/80') : 'text-cyan-400'">[{{ tokenViewMode === 'physical' ? (currentBrain?.totalTokens ? (brainEngine === 'dsh' ? 'DSH物理' : 'IDE物理') : '待同步') : '消息文本' }}]</span>
             </div>
             <div class="text-xl font-bold font-telemetry glow-amber mt-1">
-              {{ (tokenViewMode === 'physical' ? (tokenStats.antigravityBrain?.totalTokens || tokenStats.summary?.total_tokens || 0) : (tokenStats.summary?.total_tokens || 0)).toLocaleString() }}
+              {{ (tokenViewMode === 'physical' ? (currentBrain?.totalTokens || tokenStats.summary?.total_tokens || 0) : (tokenStats.summary?.total_tokens || 0)).toLocaleString() }}
             </div>
             <div class="text-[10px] text-slate-400 font-telemetry mt-1">
-              <span v-if="tokenViewMode === 'physical' && tokenStats.antigravityBrain?.totalTokens">
-                入: {{ (tokenStats.antigravityBrain?.inputTokens || 0).toLocaleString() }} | 出: {{ (tokenStats.antigravityBrain?.outputTokens || 0).toLocaleString() }}
+              <span v-if="tokenViewMode === 'physical' && currentBrain?.totalTokens">
+                入: {{ (currentBrain?.inputTokens || 0).toLocaleString() }} | 出: {{ (currentBrain?.outputTokens || 0).toLocaleString() }}
               </span>
               <span v-else>
                 入: {{ (tokenStats.summary?.total_prompt_tokens || 0).toLocaleString() }} | 出: {{ (tokenStats.summary?.total_reply_tokens || 0).toLocaleString() }}
@@ -1278,10 +1345,10 @@
           <div class="rack-card rounded-lg p-3 border border-[#253147] relative">
             <div class="mil-label text-cyan-400">TURNS 轮数</div>
             <div class="text-xl font-bold font-telemetry glow-cyan mt-1">
-              {{ (tokenViewMode === 'physical' ? (tokenStats.antigravityBrain?.steps || tokenStats.summary?.total_turns || 0) : (tokenStats.summary?.total_turns || 0)).toLocaleString() }}
+              {{ (tokenViewMode === 'physical' ? (currentBrain?.steps || currentBrain?.turns || tokenStats.summary?.total_turns || 0) : (tokenStats.summary?.total_turns || 0)).toLocaleString() }}
             </div>
             <div class="text-[10px] text-slate-400 font-telemetry mt-1">
-              {{ tokenViewMode === 'physical' ? '物理执行步数' : '有效交互轮数' }}
+              {{ tokenViewMode === 'physical' ? (brainEngine === 'dsh' ? 'DSH 交互轮/步数' : '物理执行步数') : '有效交互轮数' }}
             </div>
           </div>
 
@@ -1296,10 +1363,10 @@
           <div class="rack-card rounded-lg p-3 border border-[#253147] relative">
             <div class="mil-label text-amber-400">EST. COST</div>
             <div class="text-xl font-bold font-telemetry glow-amber mt-1">
-              ¥{{ tokenViewMode === 'physical' ? Number(tokenStats.antigravityBrain?.costCny || tokenStats.summary?.total_cost_cny || 0).toFixed(4) : (tokenStats.summary?.total_cost_cny !== undefined ? Number(tokenStats.summary.total_cost_cny).toFixed(4) : '0.0000') }}
+              ¥{{ tokenViewMode === 'physical' ? Number(currentBrain?.costCny || tokenStats.summary?.total_cost_cny || 0).toFixed(4) : (tokenStats.summary?.total_cost_cny !== undefined ? Number(tokenStats.summary.total_cost_cny).toFixed(4) : '0.0000') }}
             </div>
             <div class="text-[10px] text-slate-400 font-telemetry mt-1">
-              ${{ tokenViewMode === 'physical' ? Number(tokenStats.antigravityBrain?.costUsd || tokenStats.summary?.total_cost_usd || 0).toFixed(4) : (tokenStats.summary?.total_cost_usd !== undefined ? Number(tokenStats.summary.total_cost_usd).toFixed(4) : '0.0000') }}
+              ${{ tokenViewMode === 'physical' ? Number(currentBrain?.costUsd || tokenStats.summary?.total_cost_usd || 0).toFixed(4) : (tokenStats.summary?.total_cost_usd !== undefined ? Number(tokenStats.summary.total_cost_usd).toFixed(4) : '0.0000') }}
             </div>
           </div>
 
@@ -1314,7 +1381,7 @@
           <div class="rack-card rounded-lg p-3 border border-[#253147] relative">
             <div class="mil-label text-cyan-400">CACHE HIT</div>
             <div class="text-xl font-bold font-telemetry glow-cyan mt-1">
-              {{ tokenViewMode === 'physical' ? (tokenStats.antigravityBrain?.cacheHitPercent || '0.0') : (tokenStats.summary?.avg_cache_hit_percent !== undefined ? tokenStats.summary?.avg_cache_hit_percent : ((tokenStats.summary?.avg_cache_hit_rate || 0) * (tokenStats.summary?.avg_cache_hit_rate <= 1 ? 100 : 1)).toFixed(1)) }}%
+              {{ tokenViewMode === 'physical' ? (currentBrain?.cacheHitPercent || '0.0') : (tokenStats.summary?.avg_cache_hit_percent !== undefined ? tokenStats.summary?.avg_cache_hit_percent : ((tokenStats.summary?.avg_cache_hit_rate || 0) * (tokenStats.summary?.avg_cache_hit_rate <= 1 ? 100 : 1)).toFixed(1)) }}%
             </div>
             <div class="text-[10px] text-slate-400 font-telemetry mt-1">上下文复用率</div>
           </div>
@@ -1323,7 +1390,7 @@
           <div class="rack-card rounded-lg p-3 border border-[#253147] relative">
             <div class="mil-label text-emerald-400">SAVED TOKENS</div>
             <div class="text-xl font-bold font-telemetry glow-green mt-1">
-              {{ (tokenViewMode === 'physical' ? (tokenStats.antigravityBrain?.cachedTokens || tokenStats.summary?.total_cached_saved || 0) : (tokenStats.summary?.total_cached_saved || tokenStats.summary?.total_cached_tokens || 0)).toLocaleString() }}
+              {{ (tokenViewMode === 'physical' ? (currentBrain?.cachedTokens || tokenStats.summary?.total_cached_saved || 0) : (tokenStats.summary?.total_cached_saved || tokenStats.summary?.total_cached_tokens || 0)).toLocaleString() }}
             </div>
             <div class="text-[10px] text-slate-400 font-telemetry mt-1">免重复计算</div>
           </div>
@@ -2115,6 +2182,13 @@
         const tokenSearch = ref('');
         const hideTestTokenLogs = ref(true);
         const tokenViewMode = ref('physical'); // 'physical' (IDE Token Monitor 对齐) | 'payload' (QQ 纯文本载荷)
+        const brainEngine = ref('antigravity'); // 'antigravity' | 'dsh'
+        const currentBrain = computed(() => {
+          if (brainEngine.value === 'dsh') {
+            return tokenStats.value?.dshBrain || {};
+          }
+          return tokenStats.value?.antigravityBrain || {};
+        });
         const showBrainSteps = ref(false);
         const quotaStatus = ref({
           lowestRemainingPercent: 100,
@@ -2756,11 +2830,16 @@
           renderTokenCharts(tokenStats.value);
         }
 
+        watch(brainEngine, () => {
+          renderTokenCharts(tokenStats.value);
+        });
+
         function renderTokenCharts(data) {
           nextTick(() => {
             const isPhysical = tokenViewMode.value === 'physical';
-            const effectiveTrend = (isPhysical && data.antigravityBrain?.trend?.length)
-              ? data.antigravityBrain.trend
+            const brainData = brainEngine.value === 'dsh' ? data.dshBrain : data.antigravityBrain;
+            const effectiveTrend = (isPhysical && brainData?.trend?.length)
+              ? brainData.trend
               : (data.trend || []);
 
             // Trend Bar Chart (Clean side-by-side comparison, no muddy fills)
@@ -3300,6 +3379,8 @@
           cleanTestTokenData,
           loadTokenStats,
           tokenViewMode,
+          brainEngine,
+          currentBrain,
           showBrainSteps,
           setTokenViewMode,
           quotaStatus,

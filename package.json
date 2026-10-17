@@ -11,13 +11,17 @@
     "test-hakimi": "node --experimental-sqlite test/test-hakimi-web.mjs",
     "test-token": "node --experimental-sqlite test/test-token-upgrade.mjs",
     "test-phase": "node --experimental-sqlite test/test-phase123-upgrade.mjs",
-    "test-config": "node --experimental-sqlite test/test-config-api.mjs"
+    "test-config": "node --experimental-sqlite test/test-config-api.mjs",
+    "setup:dsh": "node scripts/setup-dsh.mjs",
+    "test-dsh": "node --experimental-sqlite test/test-dsh-integration.mjs"
   },
   "engines": {
     "node": ">=22.5.0"
   },
   "keywords": [
     "antigravity",
+    "deepseek",
+    "dsh",
     "qq-bot",
     "onebot",
     "onebot-v11",

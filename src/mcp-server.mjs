@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { fileURLToPath } from "node:url";
+import { getCharacterState, getUserAffinity } from "./db.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 let daemonPort = 34567;
@@ -48,9 +49,44 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             message: {
               type: "string",
               description: "准备发送的文本回复内容"
+            },
+            client: {
+              type: "string",
+              description: "发信客户端类型，如 dsh 或 antigravity"
+            },
+            modelName: {
+              type: "string",
+              description: "使用的模型名称，如 deepseek-flash"
             }
           },
           required: ["targetType", "targetId", "message"]
+        }
+      },
+      {
+        name: "qq_get_character_state",
+        description: "获取当前伴聊角色的时空身位（所处地点、正在进行的活动、现场细节、心情等）。",
+        inputSchema: {
+          type: "object",
+          properties: {
+            persona: {
+              type: "string",
+              description: "指定人设 key，如 tomoko, dragon_girl, little_whale, haena。默认当前活跃角色"
+            }
+          }
+        }
+      },
+      {
+        name: "qq_get_user_affinity",
+        description: "获取指定群友对伴聊角色的好感度分值、等级称谓及最新好感互动理由。",
+        inputSchema: {
+          type: "object",
+          properties: {
+            userId: {
+              type: "number",
+              description: "群友 QQ 号"
+            }
+          },
+          required: ["userId"]
         }
       }
     ]
@@ -60,10 +96,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   if (request.params.name === "qq_send_message") {
     try {
+      const args = { ...request.params.arguments };
+      const isDshClient = process.argv.includes("--client=dsh") || process.env.CLIENT === "dsh" || Boolean(process.env.DSH_HOME);
+      if (!args.client && isDshClient) {
+        args.client = "dsh";
+      }
+      if (!args.modelName && (args.client === "dsh" || isDshClient)) {
+        args.modelName = "deepseek-flash";
+      }
       const response = await fetch(`http://127.0.0.1:${daemonPort}/send-message`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(request.params.arguments)
+        body: JSON.stringify(args)
       });
       const data = await response.json();
       return {
@@ -73,6 +117,36 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       return {
         isError: true,
         content: [{ type: "text", text: `网关连接异常: ${err.message}` }]
+      };
+    }
+  }
+
+  if (request.params.name === "qq_get_character_state") {
+    try {
+      const p = request.params.arguments?.persona || null;
+      const state = getCharacterState(p);
+      return {
+        content: [{ type: "text", text: JSON.stringify(state, null, 2) }]
+      };
+    } catch (err) {
+      return {
+        isError: true,
+        content: [{ type: "text", text: `获取角色状态失败: ${err.message}` }]
+      };
+    }
+  }
+
+  if (request.params.name === "qq_get_user_affinity") {
+    try {
+      const uid = Number(request.params.arguments?.userId);
+      const aff = getUserAffinity(uid);
+      return {
+        content: [{ type: "text", text: JSON.stringify(aff, null, 2) }]
+      };
+    } catch (err) {
+      return {
+        isError: true,
+        content: [{ type: "text", text: `获取好感度失败: ${err.message}` }]
       };
     }
   }

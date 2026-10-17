@@ -81,29 +81,37 @@ hakimi-chat/
 ├── .agents/
 │   └── skills/
 │       └── tomoko-bridge/      # Antigravity IDE 伴聊伴生 Skill
-├── agents/
-│   └── tomoko.md              # 智子角色设定与 Prompt 模板
-├── public/                    # Web 控制台前端静态资源 (Vue 3 + Chart.js)
-│   ├── index.html             # 仪表盘入口
-│   └── vendor/                # 本地化离线依赖 (Tailwind, Vue, Chart.js)
-├── scripts/                   # 辅助脚本
-│   ├── send-qq.mjs            # 命令行直发 QQ 消息测试脚本
+├── agents/                     # 标准化人设库与三层 Prompt 协议
+│   ├── _base_protocol.md       # 底层通用约束协议 (去AI味、防破甲、群聊注意力)
+│   ├── _affection_matrix.json  # 动态好感度态度映射矩阵
+│   ├── tomoko.md               # 智子角色设定与 Few-shot 范例
+│   ├── bailong.md              # 白龙娘角色设定
+│   ├── whale.md                # 小鲸鱼角色设定
+│   └── haena.md                # Haena 角色设定
+├── config/
+│   └── pricing.json            # 模型阶梯计费与 KV Cache 价格表
+├── public/                     # Web 控制台前端静态资源 (Vue 3 + Chart.js)
+│   ├── index.html              # 仪表盘入口
+│   └── vendor/                 # 本地化离线依赖 (Tailwind, Vue, Chart.js)
+├── scripts/                    # 辅助脚本
+│   ├── send-qq.mjs             # 命令行直发 QQ 消息测试脚本
 │   └── wait-for-qq-message.mjs # 消息轮询等待脚本
-├── src/                       # 核心源码
+├── src/                        # 核心源码
 │   ├── antigravity-discovery.mjs # Antigravity IDE 端口与实例自动发现
-│   ├── bridge-daemon.mjs      # 守护进程主入口 (OneBot WS 客户端 + 调度)
-│   ├── connect-rpc-client.mjs # Antigravity RPC 客户端适配
-│   ├── db.mjs                 # SQLite 存储层 (状态/好感度/聊天记录)
-│   ├── mcp-server.mjs         # MCP 工具服务 (qq_send_message 等)
-│   ├── personas.mjs           # 多人格定义与提示词装载器
-│   ├── pricing.mjs            # Token 阶梯价格与 KV Cache 审计器
-│   └── web-server.mjs         # 控制台 Web 服务器与 SSE 实时推流
-├── test/                      # 单元测试与端到端模拟测试
-├── config.example.json        # 配置文件模板
-├── start.bat                  # Windows 一键自检与启动脚本
-├── start.ps1                  # PowerShell 启动脚本
-├── package.json               # 项目依赖声明 (Node >= 22.5.0)
-└── LICENSE                    # MIT 开源协议
+│   ├── bridge-daemon.mjs       # 守护进程主入口 (OneBot WS 客户端 + 调度)
+│   ├── connect-rpc-client.mjs  # Antigravity RPC 客户端适配
+│   ├── db.mjs                  # SQLite 存储层 (状态/好感度/聊天记录)
+│   ├── mcp-server.mjs          # MCP 工具服务 (qq_send_message 等)
+│   ├── personas.mjs            # 多人格三层 Prompt 装配引擎
+│   ├── pricing.mjs             # Token 阶梯价格与 KV Cache 审计器
+│   └── web-server.mjs          # 控制台 Web 服务器与 SSE 实时推流
+├── test/                       # 单元测试与端到端模拟测试
+├── config.example.json         # 配置文件模板
+├── start.bat                   # Windows 一键自检与启动脚本
+├── start.ps1                   # PowerShell 启动脚本
+├── start.sh                    # Linux / macOS 一键启动脚本
+├── package.json                # 项目依赖声明 (Node >= 22.5.0)
+└── LICENSE                     # MIT 开源协议
 ```
 
 ---
@@ -152,12 +160,18 @@ cp config.example.json config.json
 ```
 
 ### 3. 一键启动
-在 Windows 上可以直接双击运行 `start.bat`，或在命令行中运行：
+跨平台一键启动脚本：
 ```bash
-# 方式一：PowerShell 自检脚本
+# Windows PowerShell 自检脚本
 ./start.ps1
 
-# 方式二：npm 脚本
+# Windows 双击或者 CMD
+start.bat
+
+# Linux / macOS
+chmod +x start.sh && ./start.sh
+
+# 通用 npm 脚本
 npm start
 ```
 

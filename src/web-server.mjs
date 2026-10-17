@@ -29,7 +29,9 @@ import {
   clearChatMessages,
   syncCharacterStateForPersona,
   cleanTestAffinities,
-  clearAllAffinities
+  clearAllAffinities,
+  cleanTestTokenLogs,
+  getAntigravityBrainTokenStats
 } from "./db.mjs";
 
 import {
@@ -38,6 +40,8 @@ import {
   loadPersonaPrompt,
   savePersonaPrompt
 } from "./personas.mjs";
+import { loadPricingConfig, savePricingConfig } from "./pricing.mjs";
+import crypto from "node:crypto";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -49,8 +53,30 @@ export function createWebServer({ config, eventBus, daemonApi }) {
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server, path: "/ws" });
 
+  // 支持环境变量覆盖
+  if (process.env.HAKIMI_ADMIN_TOKEN && config.web) {
+    config.web.adminToken = process.env.HAKIMI_ADMIN_TOKEN;
+  }
+  if (process.env.ONEBOT_WS_URL && config.snowLuma) {
+    config.snowLuma.wsUrl = process.env.ONEBOT_WS_URL;
+  }
+
   const webPort = config.web?.port || 5120;
-  const adminToken = config.web?.adminToken || "hakimi-admin-token-2026";
+  let adminToken = config.web?.adminToken || "";
+
+  // 弱口令拦截与临时安全随机密码生成
+  if (!adminToken || adminToken === "hakimi-admin-token-2026") {
+    const tempRandomToken = crypto.randomBytes(16).toString("hex");
+    adminToken = tempRandomToken;
+    if (config.web) {
+      config.web.adminToken = tempRandomToken;
+    }
+    console.warn("\n=======================================================");
+    console.warn("⚠️  [安全警告] 检测到当前正在使用默认弱口令或未设置 adminToken！");
+    console.warn(`🔑 [临时安全密码]: ${tempRandomToken}`);
+    console.warn("📌 请尽快在 config.json 中修改 web.adminToken 以保障服务安全！");
+    console.warn("=======================================================\n");
+  }
 
   // 确保开机时角色时空位置与活跃人设严格对齐
   const initialActivePreset = config.antigravity?.agentPreset || "tomoko";
@@ -456,13 +482,33 @@ export function createWebServer({ config, eventBus, daemonApi }) {
   // -----------------------------------------------------------
   // 6. Token 消耗与用量监测 (Token Monitoring)
   // -----------------------------------------------------------
-  app.get("/api/tokens/stats", (req, res) => {
+  app.get("/api/tokens/stats", async (req, res) => {
     try {
       const days = Number(req.query.days) || 7;
       const groupId = req.query.groupId ? Number(req.query.groupId) : null;
       const persona = req.query.persona || null;
+      const conversationId = req.query.conversationId || null;
       const stats = getTokenUsageStats({ days, groupId, persona });
-      res.json({ success: true, days, data: stats });
+      const brainStats = await getAntigravityBrainTokenStats({ days, conversationId });
+      res.json({
+        success: true,
+        days,
+        data: {
+          ...stats,
+          antigravityBrain: brainStats
+        }
+      });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.get("/api/tokens/brain", async (req, res) => {
+    try {
+      const days = Number(req.query.days) || 7;
+      const conversationId = req.query.conversationId || null;
+      const brainStats = await getAntigravityBrainTokenStats({ days, conversationId });
+      res.json({ success: true, data: brainStats });
     } catch (err) {
       res.status(500).json({ success: false, error: err.message });
     }
@@ -470,9 +516,20 @@ export function createWebServer({ config, eventBus, daemonApi }) {
 
   app.get("/api/tokens/logs", (req, res) => {
     try {
-      const limit = Number(req.query.limit) || 50;
-      const logs = getRecentTokenLogs(limit);
+      const limit = Number(req.query.limit) || 100;
+      const excludeTest = req.query.excludeTest === "true" || req.query.clean === "true";
+      const groupId = req.query.groupId ? Number(req.query.groupId) : null;
+      const logs = getRecentTokenLogs(limit, { excludeTest, groupId });
       res.json({ success: true, data: logs });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post("/api/tokens/clean-test", (req, res) => {
+    try {
+      const result = cleanTestTokenLogs();
+      res.json({ success: true, message: `已成功清除 ${result.deletedCount} 条测试流量记录`, data: result });
     } catch (err) {
       res.status(500).json({ success: false, error: err.message });
     }
@@ -626,6 +683,71 @@ export function createWebServer({ config, eventBus, daemonApi }) {
     try {
       const logs = daemonApi?.getLogBuffer() || [];
       res.json({ success: true, data: logs });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.get("/api/system/config", (req, res) => {
+    try {
+      const cfg = daemonApi?.getConfig?.() || config;
+      res.json({
+        success: true,
+        data: {
+          chatBehavior: cfg.chatBehavior || {
+            ambientTriggerThreshold: 10,
+            ambientTriggerProbability: 0.1,
+            interestCooldownSeconds: 60,
+            activeWindowSeconds: 120,
+            silentBufferSeconds: 8,
+            recentContextCount: 15,
+            topSlangsCount: 5,
+            maxImages: 15,
+            patrolMinMinutes: 3,
+            patrolMaxMinutes: 8,
+            maxTurns: 30
+          },
+          daemon: cfg.daemon || {},
+          antigravity: cfg.antigravity || {},
+          snowLuma: {
+            botQqId: cfg.snowLuma?.botQqId,
+            adminQqIds: cfg.snowLuma?.adminQqIds,
+            wsUrl: cfg.snowLuma?.wsUrl
+          }
+        }
+      });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post("/api/system/config", (req, res) => {
+    try {
+      const patch = req.body || {};
+      const updated = daemonApi?.updateConfig?.(patch) || config;
+      daemonApi?.reloadConfig?.();
+      res.json({ success: true, message: "系统配置已保存并热重载生效！", data: updated });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // -----------------------------------------------------------
+  // 6.1 计费表外置与热更新接口 (Pricing Configuration)
+  // -----------------------------------------------------------
+  app.get("/api/system/pricing", (req, res) => {
+    try {
+      const pricingData = loadPricingConfig();
+      res.json({ success: true, data: pricingData });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post("/api/system/pricing", (req, res) => {
+    try {
+      const updated = savePricingConfig(req.body || {});
+      res.json({ success: true, message: "模型费率配置已成功更新并热生效！", data: updated });
     } catch (err) {
       res.status(500).json({ success: false, error: err.message });
     }

@@ -22,6 +22,22 @@
     "patrolMinMinutes": 3,
     "patrolMaxMinutes": 8
   },
+  "chatBehavior": {
+    "debounceMs": 2500,
+    "silentBufferSeconds": 8,
+    "ambientTriggerThreshold": 10,
+    "ambientTriggerProbability": 0.1,
+    "interestCooldownSeconds": 60,
+    "activeWindowSeconds": 120,
+    "recentContextCount": 15,
+    "topSlangsCount": 5,
+    "maxImages": 15,
+    "maxImagesPerGroup": 8,
+    "maxGlobalImages": 30,
+    "patrolMinMinutes": 3,
+    "patrolMaxMinutes": 8,
+    "maxTurns": 30
+  },
   "web": {
     "port": 5120,
     "adminToken": "hakimi-admin-token-2026",

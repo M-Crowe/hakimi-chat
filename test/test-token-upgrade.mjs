@@ -263,6 +263,45 @@ assert(resJson.data);
 assert(typeof resJson.data.lowestRemainingPercent === "number");
 console.log("✅ Web API /api/antigravity/quota 响应结构与鉴权验证通过！");
 
+// -------------------------------------------------------------
+// 6. Antigravity 伴聊大脑物理用量 (IDE Token Monitor 对齐) 验证
+// -------------------------------------------------------------
+console.log("\n--- 6. 验证 Antigravity 伴聊大脑物理用量 (IDE Token Monitor 对齐) ---");
+const { getAntigravityBrainTokenStats } = await import("../src/antigravity-discovery.mjs");
+const brainStats = await getAntigravityBrainTokenStats();
+assert(brainStats);
+if (brainStats.success) {
+  assert(typeof brainStats.totalTokens === "number", "totalTokens 必须为数字");
+  assert(brainStats.totalTokens > 0, "物理用量必须大于 0");
+  assert(typeof brainStats.cachedTokens === "number", "cachedTokens 必须为数字");
+  assert(typeof brainStats.inputTokens === "number", "inputTokens 必须为数字");
+  assert(typeof brainStats.outputTokens === "number", "outputTokens 必须为数字");
+  assert(typeof brainStats.cacheHitRate === "number", "cacheHitRate 必须为数字");
+  assert(Array.isArray(brainStats.trend), "trend 必须为数组");
+  assert(Array.isArray(brainStats.recentSteps), "recentSteps 必须为数组");
+  console.log(`✅ Antigravity 大脑物理用量探针验证成功: ${brainStats.title} | 总量: ${(brainStats.totalTokens / 1000000).toFixed(2)}M Tokens (KV Cache: ${(brainStats.cachedTokens / 1000000).toFixed(2)}M, 命中率: ${brainStats.cacheHitPercent}%) | 步数: ${brainStats.steps}`);
+} else {
+  console.log("ℹ️ 当前环境未发现运行中的伴聊会话 transcript (安全降级)");
+}
+
+// 6.1 验证 Web API /api/tokens/stats 与 /api/tokens/brain 携带 antigravityBrain
+const statsRes = await fetch(`http://127.0.0.1:${testPort}/api/tokens/stats`, {
+  headers: { "Authorization": "Bearer test-token" }
+});
+assert.strictEqual(statsRes.status, 200);
+const statsJson = await statsRes.json();
+assert.strictEqual(statsJson.success, true);
+assert(statsJson.data.antigravityBrain !== undefined, "stats 必须携带 antigravityBrain 字段");
+
+const brainRes = await fetch(`http://127.0.0.1:${testPort}/api/tokens/brain`, {
+  headers: { "Authorization": "Bearer test-token" }
+});
+assert.strictEqual(brainRes.status, 200);
+const brainJson = await brainRes.json();
+assert.strictEqual(brainJson.success, true);
+assert(brainJson.data !== undefined);
+console.log("✅ Web API /api/tokens/stats 与 /api/tokens/brain 物理用量集成测试通过！");
+
 await web.stop();
 
 console.log("\n🎉 Token 监测系统升级与配额防爆全项深度测试全部通过！");

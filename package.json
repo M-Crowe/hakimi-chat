@@ -5,11 +5,13 @@
   "type": "module",
   "main": "src/bridge-daemon.mjs",
   "scripts": {
-    "start": "node src/bridge-daemon.mjs",
-    "test": "node test/test-all-phases.mjs && node test/test-hakimi-web.mjs && node test/test-token-upgrade.mjs",
+    "start": "node --experimental-sqlite src/bridge-daemon.mjs",
+    "test": "node --experimental-sqlite --test test/*.mjs",
     "test-db": "node test/test-db.mjs",
     "test-hakimi": "node test/test-hakimi-web.mjs",
-    "test-token": "node test/test-token-upgrade.mjs"
+    "test-token": "node test/test-token-upgrade.mjs",
+    "test-phase": "node test/test-phase123-upgrade.mjs",
+    "test-config": "node test/test-config-api.mjs"
   },
   "engines": {
     "node": ">=22.5.0"

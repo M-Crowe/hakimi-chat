@@ -24,7 +24,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: "qq_send_message",
-        description: "向 QQ 群或好友发送消息。你在想好回复之后，必须调用此工具把内容发送出去。可以在回复末尾附带 [af:+3|理由] 或 [state:地点|活动|细节] 标签（网关会自动拦截并入库，不会被用户看到）。",
+        description: "向 QQ 群或好友发送消息。你在想好回复之后，必须调用此工具把内容发送出去。可以在回复末尾附带 [af:+2|友好理由]、[af:-2|挑刺反感理由] 或 [state:地点|活动|细节] 标签（网关会自动拦截并入库，单次好感度变动严格限制在 [-2, +2]，不会被用户看到）。",
         inputSchema: {
           type: "object",
           properties: {

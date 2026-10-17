@@ -28,9 +28,10 @@ import {
   getManagedGroup,
   saveManagedGroup,
   recordTokenUsage,
-  estimateTokens
+  estimateTokens,
+  pruneOldRecords
 } from "./db.mjs";
-import { getActivePersona, loadPersonaPrompt } from "./personas.mjs";
+import { getActivePersona, loadPersonaPrompt, buildSystemPrompt } from "./personas.mjs";
 import { createWebServer } from "./web-server.mjs";
 
 // 全局事件总线与控制台日志捕获（供 Web Dashboard 运维看板实时推流）
@@ -91,19 +92,50 @@ const PROJECT_ROOT = path.resolve(__dirname, "..");
 
 // 加载配置
 const configPath = path.resolve(PROJECT_ROOT, "config.json");
-let config = {
+const DEFAULT_CONFIG = {
   snowLuma: { wsUrl: "ws://127.0.0.1:3000/", botQqId: 123456789, adminQqIds: [987654321] },
   antigravity: { lsAddress: "http://127.0.0.1:6714", agentPreset: "tomoko", maxTurns: 30 },
-  daemon: { internalHttpPort: 34567, silentBufferLimit: 8 },
-  web: { port: 5120, adminToken: "hakimi-admin-token-2026", cors: true }
+  daemon: { internalHttpPort: 34567, silentBufferLimit: 8, patrolMinMinutes: 3, patrolMaxMinutes: 8 },
+  web: { port: 5120, adminToken: "hakimi-admin-token-2026", cors: true },
+  chatBehavior: {
+    ambientTriggerThreshold: 10,
+    ambientTriggerProbability: 0.1,
+    interestCooldownSeconds: 60,
+    activeWindowSeconds: 120,
+    silentBufferSeconds: 8,
+    recentContextCount: 15,
+    topSlangsCount: 5,
+    maxImages: 15,
+    patrolMinMinutes: 3,
+    patrolMaxMinutes: 8,
+    maxTurns: 30
+  }
 };
+let config = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
 
 if (fs.existsSync(configPath)) {
   try {
-    config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    const loaded = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    config = {
+      ...DEFAULT_CONFIG,
+      ...loaded,
+      daemon: { ...DEFAULT_CONFIG.daemon, ...(loaded.daemon || {}) },
+      antigravity: { ...DEFAULT_CONFIG.antigravity, ...(loaded.antigravity || {}) },
+      snowLuma: { ...DEFAULT_CONFIG.snowLuma, ...(loaded.snowLuma || {}) },
+      web: { ...DEFAULT_CONFIG.web, ...(loaded.web || {}) },
+      chatBehavior: { ...DEFAULT_CONFIG.chatBehavior, ...(loaded.chatBehavior || {}) }
+    };
   } catch (e) {
     console.warn("[Config] 加载 config.json 失败，使用内置默认值");
   }
+}
+
+// 支持环境变量覆盖
+if (process.env.HAKIMI_ADMIN_TOKEN) {
+  config.web.adminToken = process.env.HAKIMI_ADMIN_TOKEN;
+}
+if (process.env.ONEBOT_WS_URL) {
+  config.snowLuma.wsUrl = process.env.ONEBOT_WS_URL;
 }
 
 // 自动初始化托管群组白名单至 SQLite managed_groups
@@ -123,14 +155,101 @@ function getSnowLumaHttpBase() {
   return "http://127.0.0.1:3000";
 }
 
-// 缓存图片目录与 FIFO 滚动淘汰 (保留最近 15 张)
+// 缓存图片目录与群组隔离视觉缓存池 (Group-isolated Image Cache)
 const IMAGES_DIR = path.resolve(PROJECT_ROOT, "data/images");
 const MAX_CACHED_IMAGES = 15;
+const MAX_IMAGES_PER_GROUP = 8;
+const MAX_GLOBAL_IMAGES = 30;
+
 if (!fs.existsSync(IMAGES_DIR)) {
   fs.mkdirSync(IMAGES_DIR, { recursive: true });
 }
 
-function cleanImagesFifo(maxKeep = MAX_CACHED_IMAGES, dir = IMAGES_DIR) {
+// Map<GroupId, Array<{ path, name, mtimeMs, groupId }>>
+const groupImagePool = new Map();
+const groupActivityOrder = []; // LRU 追踪
+
+/**
+ * 安全删除本地文件，忽略 Windows 占用 (EBUSY) 与已被删除 (ENOENT)
+ */
+async function safeUnlink(filePath) {
+  try {
+    if (fs.existsSync(filePath)) {
+      await fs.promises.unlink(filePath);
+    }
+  } catch (e) {
+    if (e.code !== "ENOENT" && e.code !== "EBUSY" && e.code !== "EPERM") {
+      console.warn(`[ImageCleanup] safeUnlink 忽略非致命异常 ${filePath}:`, e.message);
+    }
+  }
+}
+
+function safeUnlinkSync(filePath) {
+  try {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch (e) {
+    if (e.code !== "ENOENT" && e.code !== "EBUSY" && e.code !== "EPERM") {
+      console.warn(`[ImageCleanup] safeUnlinkSync 忽略非致命异常 ${filePath}:`, e.message);
+    }
+  }
+}
+
+/**
+ * 登记图片至对应群组缓存池，执行单群上限 (8张) 与全局上限 (30张 LRU 淘汰)
+ */
+async function registerGroupImage(groupId, imgItem) {
+  if (!groupId) return;
+  const gid = String(groupId);
+
+  // 1. 刷新活跃群组顺序
+  const orderIdx = groupActivityOrder.indexOf(gid);
+  if (orderIdx !== -1) groupActivityOrder.splice(orderIdx, 1);
+  groupActivityOrder.push(gid);
+
+  if (!groupImagePool.has(gid)) {
+    groupImagePool.set(gid, []);
+  }
+  const groupList = groupImagePool.get(gid);
+  if (!groupList.some(i => i.path === imgItem.path)) {
+    groupList.push(imgItem);
+  }
+
+  // 2. 单群上限检查 (默认 8 张)
+  const maxPerGroup = config.chatBehavior?.maxImagesPerGroup ?? MAX_IMAGES_PER_GROUP;
+  while (groupList.length > maxPerGroup) {
+    const expired = groupList.shift();
+    if (expired?.path) {
+      await safeUnlink(expired.path);
+    }
+  }
+
+  // 3. 全局总上限检查 (默认 30 张，LRU 淘汰最久未活跃群组)
+  const maxGlobal = config.chatBehavior?.maxGlobalImages ?? MAX_GLOBAL_IMAGES;
+  let totalImages = 0;
+  for (const list of groupImagePool.values()) {
+    totalImages += list.length;
+  }
+
+  while (totalImages > maxGlobal && groupActivityOrder.length > 0) {
+    const oldestGid = groupActivityOrder[0];
+    const oldestList = groupImagePool.get(oldestGid);
+    if (oldestList && oldestList.length > 0) {
+      const evicted = oldestList.shift();
+      totalImages--;
+      if (evicted?.path) {
+        await safeUnlink(evicted.path);
+      }
+    }
+    if (!oldestList || oldestList.length === 0) {
+      groupImagePool.delete(oldestGid);
+      groupActivityOrder.shift();
+    }
+  }
+}
+
+function cleanImagesFifo(maxKeep = (config.chatBehavior?.maxImages ?? MAX_CACHED_IMAGES), dir = IMAGES_DIR) {
   try {
     if (!fs.existsSync(dir)) return { deleted: 0, count: 0 };
     const files = fs.readdirSync(dir);
@@ -151,7 +270,7 @@ function cleanImagesFifo(maxKeep = MAX_CACHED_IMAGES, dir = IMAGES_DIR) {
       const toDelete = fileStats.slice(maxKeep);
       for (const item of toDelete) {
         try {
-          fs.unlinkSync(item.path);
+          safeUnlinkSync(item.path);
           deleted++;
         } catch (err) {
           console.warn(`[ImageCleanup] 删除旧图片失败 ${item.name}: ${err.message}`);
@@ -170,7 +289,7 @@ cleanImagesFifo(MAX_CACHED_IMAGES);
 /**
  * 确保图片下载并缓存到本地，返回绝对路径 (正斜杠格式)
  */
-async function ensureDownloadedImage(imgData) {
+async function ensureDownloadedImage(imgData, groupId = null) {
   if (!imgData) return null;
   try {
     let file = imgData.file || "";
@@ -215,7 +334,9 @@ async function ensureDownloadedImage(imgData) {
         const now = new Date();
         fs.utimesSync(localFilePath, now, now);
       } catch {}
-      cleanImagesFifo(MAX_CACHED_IMAGES);
+      if (groupId) {
+        await registerGroupImage(groupId, { path: normalizedPath, name: filename, mtimeMs: Date.now(), groupId });
+      }
       return normalizedPath;
     }
 
@@ -228,7 +349,9 @@ async function ensureDownloadedImage(imgData) {
           if (buf.length > 0) {
             fs.writeFileSync(localFilePath, buf);
             console.log(`🖼️ [图片下载完成] 大小: ${buf.length} 字节 -> ${normalizedPath}`);
-            cleanImagesFifo(MAX_CACHED_IMAGES);
+            if (groupId) {
+              await registerGroupImage(groupId, { path: normalizedPath, name: filename, mtimeMs: Date.now(), groupId });
+            }
             return normalizedPath;
           }
         }
@@ -736,16 +859,21 @@ function isDirectedAtAi(text, isContextEligible = false) {
   return false;
 }
 
-/**
- * 8 秒聚合窗口到期执行：合并批处理短消息，组装双层协议 Prompt 并投递 Antigravity
- */
 async function dispatchBatch(sessionKey) {
   try {
     const batch = batchBuffers.get(sessionKey);
     if (!batch || batch.messages.length === 0) {
+      if (batch) {
+        if (batch.debounceTimer) clearTimeout(batch.debounceTimer);
+        if (batch.maxWaitTimer) clearTimeout(batch.maxWaitTimer);
+        if (batch.timer) clearTimeout(batch.timer);
+      }
       batchBuffers.delete(sessionKey);
       return;
     }
+    if (batch.debounceTimer) clearTimeout(batch.debounceTimer);
+    if (batch.maxWaitTimer) clearTimeout(batch.maxWaitTimer);
+    if (batch.timer) clearTimeout(batch.timer);
     batchBuffers.delete(sessionKey);
 
     const session = getOrCreateSession(sessionKey);
@@ -764,7 +892,7 @@ async function dispatchBatch(sessionKey) {
 
     const persona = getActivePersona(config.antigravity?.agentPreset);
 
-    // 1. 合并 8 秒内的多条碎片短句与图片
+    // 1. 合并批处理短句与图片
     const aggregatedText = batch.messages.map(m => m.text).join("，");
     const aggregatedImages = (batch.images || []).slice(0, 3); // 最多保留 3 张
 
@@ -772,25 +900,31 @@ async function dispatchBatch(sessionKey) {
     const aff = getUserAffinity(senderId);
     const charState = getCharacterState();
 
-    console.log(`🤖 [${persona.displayName} 8秒聚合完成，推入 Antigravity] 会话: ${sessionKey} | 合并条数: ${batch.messages.length} | 图片数: ${aggregatedImages.length} | 说话人(${senderId}): "${aggregatedText}" | 好感度: [${aff.affinity_points}(${aff.level_name})]`);
+    console.log(`🤖 [${persona.displayName} 滑动窗口聚合完成，推入 Antigravity] 会话: ${sessionKey} | 合并条数: ${batch.messages.length} | 图片数: ${aggregatedImages.length} | 说话人(${senderId}): "${aggregatedText}" | 好感度: [${aff.affinity_points}(${aff.level_name})]`);
 
-    // 3. 构造结构化时空身位
-    let prompt = `[时空与人际背景感知（严格遵守）：\n` +
-      `• 全局真实物理位置：【${charState.location}】\n` +
-      `• 当前正在进行的活动：【${charState.action}】\n` +
-      `• 现场细节与环境氛围：【${charState.detail}】\n` +
-      `• 当前说话人(QQ:${senderId})好感度：${aff.affinity_points}/100，所处阶段：【${aff.level_name}】\n` +
-      `• 发送消息目标：targetType="${batch.targetType}", targetId=${targetId}, sessionKey="${sessionKey}", senderId=${senderId}\n` +
+    // 3. 构建三层动态架构提示词 (底层协议 + 人设范式 + 好感矩阵/时空身位)
+    const systemPrompt = buildSystemPrompt(persona.name, aff.affinity_points, {
+      location: charState.location,
+      action: charState.action,
+      detail: charState.detail,
+      mood: charState.mood
+    });
+
+    let prompt = `${systemPrompt}\n\n` +
+      `[实时交互与目标元数据：\n` +
+      `• 当前会话目标：targetType="${batch.targetType}", targetId=${targetId}, sessionKey="${sessionKey}", senderId=${senderId}\n` +
       `]\n`;
 
-    // 4. 从 SQLite 提取最近 15 条滚动真实上下文
-    const recentHistory = getRecentChatContext(sessionKey, 15);
+    // 4. 从 SQLite 提取最近滚动真实上下文
+    const recentCount = config.chatBehavior?.recentContextCount ?? 15;
+    const recentHistory = getRecentChatContext(sessionKey, recentCount);
     if (recentHistory) {
       prompt += `[群聊最近滚动真实上下文（背景参考，即使刚才未 @ 你也一直在发生）：\n${recentHistory}\n]\n`;
     }
 
-    // 5. 注入本群流行黑话参考（Top 5）
-    const slangs = getTopSlangs(5);
+    // 5. 注入本群流行黑话参考
+    const slangsCount = config.chatBehavior?.topSlangsCount ?? 5;
+    const slangs = getTopSlangs(slangsCount);
     if (slangs && slangs.length > 0) {
       prompt += `[本群流行网络用语参考（自然使用，无需生搬硬套）：\n` +
         slangs.map(s => `• ${s.word}${s.meaning ? ": " + s.meaning : ""}`).join("\n") +
@@ -812,23 +946,26 @@ async function dispatchBatch(sessionKey) {
         `你必须首先调用 view_file(AbsolutePath="${aggregatedImages[0].path}") 查看图片画面！仔细观察图片内容（画面细节、文字、表情包梗、角色、游戏截图等），随后在社交决策与回复中针对该图片给出符合你性格设定的自然吐槽或互动！\n`;
     }
 
-    // 7. 注入双层显式解耦协议（方案三核心，通用解耦规范）
-    prompt += `\n\n[核心执行规范与操作指引（绝对严格执行）]：\n` +
-      `1. 【多模态看图与联网查证优先】：若群友发了图片，第一步必须调用 view_file 查看图片；若涉及你不确定的现实事实、科技/汽车参数（如特斯拉Roadster会飞/喷气阀）、突发新闻、游戏版本等，必须调用 search_web 工具联网查清真相，再基于真实事实接话吐槽，切勿胡乱反驳或闭门造车！\n` +
+    // 7. 注入双层显式解耦协议（二代仿真模式·社交动力学核心决策规范）
+    prompt += `\n\n[核心执行规范与决策操作指引（绝对严格执行）]：\n` +
+      `1. 【多模态看图与联网查证优先】：若群友发了图片，第一步必须调用 view_file 查看真实画面；若涉及你不确定的现实事实、科技/数码参数、突发新闻、游戏版本或热点梗，必须调用 search_web 工具查清真相后再基于事实接话，切勿凭空瞎猜或胡乱反驳！\n` +
       `2. 【严禁单纯在对话框打字（必须实际调用发信工具）】：单纯在聊天窗口输出文本或标签绝对不会送达 QQ 群！你在完成思考后，必须调用 call_mcp_tool(ServerName="agy-tomoko-mcp", ToolName="qq_send_message", Arguments={targetType:"${batch.targetType}", targetId:${targetId}, senderId:${senderId}, sessionKey:"${sessionKey}", message:"..."}) 或运行 node scripts/send-qq.mjs 真正把消息发出！\n` +
-      `3. 【发信后必须重新挂起监听】：执行发信后，必须紧接着运行 node scripts/wait-for-qq-message.mjs 挂入后台等待新消息。\n\n` +
+      `3. 【群聊心法：反 AI 味与拒绝有求必应】：\n` +
+      `   • 你是混在群里的真人群友，绝非客服、非搜索引擎、非任务队列。不要逐条点评，严禁做“看到大家在聊……”式的总结；别人要求推荐或帮忙时，可以反问、装傻、吐槽或已读乱回，少用“一绝”“超好用”“非常推荐”等推销词。\n` +
+      `   • 严禁使用 Markdown 排版：禁止在消息中使用 **粗体**、# 标题、代码块，QQ 显示会异常混乱。\n` +
+      `   • 严禁汇报：调用发信工具后，严禁在对话框自言自语输出“已发送”“我已在群里回复”等汇报总结。\n` +
+      `4. 【发信后必须重新挂起监听】：执行发信后，必须紧接着运行 node scripts/wait-for-qq-message.mjs 挂入后台等待新消息。\n\n` +
       `[双层标签槽规范（填入 message 参数传递给发信工具）]：\n` +
       `槽 1 <social_decision>（你的潜意识社交分析，群友完全不可见）：\n` +
-      `• 简短分析：当前话题与我的关联度、我当前的身位状态、对方意图与群内氛围。\n` +
+      `• 简短分析：群友正在聊什么、当前话题与我的关联度、我当前的身位状态（${charState.location} / ${charState.action}）、对方意图与群内氛围。\n` +
       `• ACTION（必须严格三选一）：\n` +
-      `  - ACTION: REPLY （当有人 @我、叫我名字、或者正跟我连续对话）\n` +
-      `  - ACTION: INTERJECT （群友没叫我，但群里正聊到我感兴趣的话题、排队复读好玩的梗、或我忍不住探头搭话）\n` +
-      `  - ACTION: DIVE （无意义单字如"1"、无关碎嘴、或者我想专注于自己的事情，决定已读不回继续潜水）\n` +
-      `• dive_minutes：若选择 DIVE，指定潜水分钟数（3~6 分钟）。\n` +
-      `• 顺风车黑话：若群友发了新鲜的网络黑话或梗，可顺手提取：[slang:黑话词|推测含义]\n\n` +
+      `  - ACTION: REPLY （当有人 @我、点名找我、或正处于与我的连续闲聊对话中时）\n` +
+      `  - ACTION: INTERJECT （群友没叫我，但聊到了我感兴趣的话题、排队复读好玩的梗、发了有趣的图、或我忍不住探头吐槽搭话）\n` +
+      `  - ACTION: DIVE （无意义单字如"1"、无关碎嘴、话题已翻篇、或我想专注自己的事情，决定已读不回继续潜水）\n` +
+      `• 顺风车标签（好感度调整铁律：仅当对方明显讨好/冒犯你，或触发核心喜好/雷点时才附带，单次变动幅度严格限制在 [-2, +2]，日常普通对话严禁附带）：友好共鸣/深度契合核心喜好 [af:+1~+2|理由]；挑刺/冒犯/轻浮骚扰 [af:-1~-2|理由]；日常普通对话绝对不带。发现新鲜梗附带 [slang:黑话词|推测含义]；时空转移附带 [state:地点|活动|现场细节]。\n\n` +
       `槽 2 <reply>（真正发到群里的纯净声音）：\n` +
-      `• 若第一槽决策为 DIVE：本槽必须直接输出 [SILENT]\n` +
-      `• 若第一槽决策为 REPLY 或 INTERJECT：本槽输出契合你人设的口语短句（1~15字，去AI味）。想分条连发时可直接换行（最多2~3行小短句，系统会自动带打字间隔分条发出）。\n\n` +
+      `• 若第一槽决策为 DIVE：本槽必须直接输出 [SILENT]，系统将零 Token 睡眠静默拦截，绝不打扰群友。\n` +
+      `• 若第一槽决策为 REPLY 或 INTERJECT：本槽输出契合你人设的口语短句（1~15字，去AI味，中文不要敲空格断句）。想分条连发时可直接换行（最多2~3行小短句，系统会自动带打字间隔分条发出）。在末尾可附带 <MEMORY_SNAPSHOT>记忆摘要</MEMORY_SNAPSHOT>。\n\n` +
       (batch.isPatrolWake 
         ? `【定时看群感知】：你刚忙完手头的事顺便看了一眼群消息，群友并没有特意叫你。你可以根据上面最近滚动上下文自主决定：是继续潜水沉默（DIVE），还是随手接一句/跟一句复读/吐槽冒泡（INTERJECT）。`
         : `来自群友(${senderId})的最新发言: "${aggregatedText}"`);
@@ -941,11 +1078,12 @@ async function handleOneBotMessage(event) {
   userText = userText.trim();
   const effectiveCommandText = userText || (detectedImages.length > 0 ? "[图片]" : rawText);
 
-  // 异步下载图片至本地
+  // 异步下载图片至本地 (按群组隔离缓存)
+  const imageGroupId = isGroup ? targetId : `private:${targetId}`;
   const downloadedImages = [];
   for (const img of detectedImages) {
     try {
-      const localPath = await ensureDownloadedImage(img);
+      const localPath = await ensureDownloadedImage(img, imageGroupId);
       if (localPath) {
         const fname = path.basename(localPath);
         downloadedImages.push({
@@ -989,16 +1127,18 @@ async function handleOneBotMessage(event) {
     }
   }
 
-  // 🌟 3.1.3 全局探头计数器（每10条群消息 10% 概率触发路过吃瓜评估，受群触发策略约束）
+  // 🌟 3.1.3 全局探头计数器（累积指定条数群消息，按概率触发路过吃瓜评估，受群触发策略约束）
   const allowAutonomous = !isGroup || managedGroupConfig?.trigger_policy !== "strict";
+  const ambientThreshold = config.chatBehavior?.ambientTriggerThreshold ?? 10;
+  const ambientProbability = config.chatBehavior?.ambientTriggerProbability ?? 0.10;
   session.messageCounter = (session.messageCounter || 0) + 1;
   let isAmbientCandidate = false;
-  if (isGroup && allowAutonomous && session.messageCounter >= 10) {
+  if (isGroup && allowAutonomous && session.messageCounter >= ambientThreshold) {
     session.messageCounter = 0;
     saveSessionState(sessionKey, session);
-    if (Math.random() < 0.10) {
+    if (Math.random() < ambientProbability) {
       isAmbientCandidate = true;
-      console.log(`👀 [全局探头机制] 群聊累计满10条，触发 10% 低频吃瓜围观评估！`);
+      console.log(`👀 [全局探头机制] 群聊累计满${ambientThreshold}条，触发 ${(ambientProbability * 100).toFixed(0)}% 吃瓜围观评估！`);
     }
   }
 
@@ -1011,9 +1151,9 @@ async function handleOneBotMessage(event) {
   const isDirected = isDirectedAtAi(effectiveCommandText, isContextEligible);
   const isContinuousChat = isInActiveWindow && (isContinuousSpeaker || isDirected);
 
-  // 4. 自主探头插嘴决策引擎（兴趣词，冷却60秒，严格受 trigger_policy 约束）
+  // 4. 自主探头插嘴决策引擎（兴趣词，冷却受配置约束，严格受 trigger_policy 约束）
   let isInterestCandidate = false;
-  const cdSeconds = 60;
+  const cdSeconds = config.chatBehavior?.interestCooldownSeconds ?? 60;
   if (isGroup && allowAutonomous && !isDirectMention && !isContinuousChat && !isDirected) {
     const lowerText = effectiveCommandText.toLowerCase();
     const hitKeyword = interestKeywords.some(kw => lowerText.includes(kw));
@@ -1033,10 +1173,11 @@ async function handleOneBotMessage(event) {
     else if (isContinuousChat) triggerReason = `持续会话接话(活跃期剩余${Math.round((session.activeUntil - now)/1000)}s)`;
     else if (isDirected) triggerReason = "语义明确指向(isDirectedAtAi)";
     else if (isInterestCandidate) triggerReason = `命中${persona.displayName}兴趣词探头`;
-    else if (isAmbientCandidate) triggerReason = "全局满10条10%吃瓜探头";
+    else if (isAmbientCandidate) triggerReason = `全局满${ambientThreshold}条${(ambientProbability * 100).toFixed(0)}%吃瓜探头`;
 
-    // 刷新活跃期：延续 120 秒
-    session.activeUntil = now + 120 * 1000;
+    // 刷新活跃期：延续配置秒数
+    const activeWindowSeconds = config.chatBehavior?.activeWindowSeconds ?? 120;
+    session.activeUntil = now + activeWindowSeconds * 1000;
     session.activeSpeaker = senderId;
     saveSessionState(sessionKey, session);
   }
@@ -1080,13 +1221,30 @@ async function handleOneBotMessage(event) {
     return;
   }
 
-  // 3.3 群聊判定：未决定触发 AI 时，消息已在 3.1.0 写入 SQLite，在此静默结束
-  if (isGroup && !shouldTriggerAI) {
+  // 3.3 群聊判定：未决定触发 AI 且当前会话无正在缓冲中的批处理时，消息已在 3.1.0 写入 SQLite，在此静默结束
+  if (isGroup && !shouldTriggerAI && !batchBuffers.has(sessionKey)) {
     return;
   }
 
-  // 🌟 3.4 进入 8 秒批处理聚合缓冲 (Batch Window，对齐 qq-bridge)
+  // 🌟 3.4 进入自适应滑动窗口防抖缓冲 (debounce 2.5s + maxWait 8s)
+  const debounceMs = config.chatBehavior?.debounceMs ?? 2500;
+  const maxWaitMs = (config.chatBehavior?.silentBufferSeconds ?? config.daemon?.silentBufferLimit ?? 8) * 1000;
+
+  const triggerDispatch = () => {
+    const b = batchBuffers.get(sessionKey);
+    if (b) {
+      if (b.debounceTimer) clearTimeout(b.debounceTimer);
+      if (b.maxWaitTimer) clearTimeout(b.maxWaitTimer);
+      if (b.timer) clearTimeout(b.timer);
+    }
+    dispatchBatch(sessionKey).catch((err) => {
+      console.error(`❌ [dispatchBatch Timer 异常] 会话: ${sessionKey}:`, err?.stack || err?.message || err);
+    });
+  };
+
   if (!batchBuffers.has(sessionKey)) {
+    const maxWaitTimer = setTimeout(triggerDispatch, maxWaitMs);
+
     batchBuffers.set(sessionKey, {
       messages: [],
       images: [],
@@ -1098,13 +1256,12 @@ async function handleOneBotMessage(event) {
       isDirectMention,
       isContinuousChat,
       isAutonomousInterject: isInterestCandidate || isAmbientCandidate,
-      timer: setTimeout(() => {
-        dispatchBatch(sessionKey).catch((err) => {
-          console.error(`❌ [dispatchBatch Timer 异常] 会话: ${sessionKey}:`, err?.stack || err?.message || err);
-        });
-      }, 8000)
+      debounceTimer: null,
+      maxWaitTimer,
+      timer: maxWaitTimer
     });
   }
+
   const batch = batchBuffers.get(sessionKey);
   batch.messages.push({ senderId, text: effectiveCommandText });
   for (const di of downloadedImages) {
@@ -1112,13 +1269,19 @@ async function handleOneBotMessage(event) {
       batch.images.push(di);
     }
   }
+
   // 保持 primarySenderId，后续群友发言不篡改归属人，除非直接 @bot 或显式点名
   if (isDirectMention) {
     batch.senderId = senderId;
     batch.primarySenderId = senderId;
     batch.isDirectMention = true;
   }
-  console.log(`📦 [8秒聚合缓冲中] ${sessionKey} 已收集 ${batch.messages.length} 条碎片短句，${batch.images.length} 张图片，等待合并...`);
+
+  // 若有人持续打字刷屏，重置 2.5s 防抖计时器；maxWait 计时器不重置，8s 封顶强制截断发送
+  if (batch.debounceTimer) clearTimeout(batch.debounceTimer);
+  batch.debounceTimer = setTimeout(triggerDispatch, debounceMs);
+
+  console.log(`📦 [自适应滑动窗口缓冲中] ${sessionKey} 已收集 ${batch.messages.length} 条碎片短句，${batch.images.length} 张图片 (静默防抖: ${debounceMs}ms / 封顶: ${maxWaitMs}ms)...`);
   } catch (err) {
     console.error(`❌ [handleOneBotMessage 异常]:`, err?.stack || err?.message || err);
   }
@@ -1164,7 +1327,7 @@ async function handleSlashCommands(sessionKey, targetType, targetId, text, isAdm
     const char = getCharacterState();
     const sleeping = Boolean(s.sleepUntil && Date.now() < s.sleepUntil);
     const active = Boolean(s.activeUntil && Date.now() < s.activeUntil);
-    const maxTurns = config.antigravity?.maxTurns || 30;
+    const maxTurns = config.chatBehavior?.maxTurns ?? config.antigravity?.maxTurns ?? 30;
 
     await sendQQMessage(targetType, targetId, 
       `📊 状态仪表盘：\n` +
@@ -1247,8 +1410,8 @@ async function checkAntigravityQuota(forceRefresh = false) {
 
 // 6. 仿生定时随机看群引擎（在设定时间区间内随机抽样看群，是否发言完全由角色自主决定）
 function startPatrolScheduler() {
-  const minMins = config.daemon?.patrolMinMinutes ?? 3;
-  const maxMins = config.daemon?.patrolMaxMinutes ?? 8;
+  const minMins = config.chatBehavior?.patrolMinMinutes ?? config.daemon?.patrolMinMinutes ?? 3;
+  const maxMins = config.chatBehavior?.patrolMaxMinutes ?? config.daemon?.patrolMaxMinutes ?? 8;
   const randomMinutes = Math.random() * (maxMins - minMins) + minMins;
   const nextDelayMs = Math.round(randomMinutes * 60 * 1000);
 
@@ -1358,6 +1521,8 @@ const daemonApi = {
     // 清除该群挂起的批处理缓冲与定时器
     const key = `group:${gid}`;
     const batch = batchBuffers.get(key);
+    if (batch?.debounceTimer) clearTimeout(batch.debounceTimer);
+    if (batch?.maxWaitTimer) clearTimeout(batch.maxWaitTimer);
     if (batch?.timer) clearTimeout(batch.timer);
     batchBuffers.delete(key);
     sessions.delete(key);
@@ -1370,6 +1535,8 @@ const daemonApi = {
     if (!enabled) {
       const key = `group:${gid}`;
       const batch = batchBuffers.get(key);
+      if (batch?.debounceTimer) clearTimeout(batch.debounceTimer);
+      if (batch?.maxWaitTimer) clearTimeout(batch.maxWaitTimer);
       if (batch?.timer) clearTimeout(batch.timer);
       batchBuffers.delete(key);
     }
@@ -1377,6 +1544,8 @@ const daemonApi = {
   },
   resetSession: (sessionKey) => {
     const b = batchBuffers.get(sessionKey);
+    if (b?.debounceTimer) clearTimeout(b.debounceTimer);
+    if (b?.maxWaitTimer) clearTimeout(b.maxWaitTimer);
     if (b?.timer) clearTimeout(b.timer);
     batchBuffers.delete(sessionKey);
     const defaultState = {
@@ -1395,6 +1564,8 @@ const daemonApi = {
   },
   resetAllSessions: () => {
     for (const [key, b] of batchBuffers.entries()) {
+      if (b?.debounceTimer) clearTimeout(b.debounceTimer);
+      if (b?.maxWaitTimer) clearTimeout(b.maxWaitTimer);
       if (b?.timer) clearTimeout(b.timer);
     }
     batchBuffers.clear();
@@ -1432,6 +1603,9 @@ const daemonApi = {
       try {
         const newCfg = JSON.parse(fs.readFileSync(configPath, "utf-8"));
         Object.assign(config, newCfg);
+        if (newCfg.chatBehavior) {
+          config.chatBehavior = { ...DEFAULT_CONFIG.chatBehavior, ...newCfg.chatBehavior };
+        }
         initManagedGroups(config.snowLuma?.allowedGroupIds || []);
         console.log("🔄 [配置重载] config.json 已重新加载");
       } catch (err) {
@@ -1439,8 +1613,27 @@ const daemonApi = {
       }
     }
   },
+  getConfig: () => config,
+  updateConfig: (patch) => {
+    if (patch.chatBehavior) {
+      config.chatBehavior = { ...(config.chatBehavior || DEFAULT_CONFIG.chatBehavior), ...patch.chatBehavior };
+    }
+    if (patch.daemon) {
+      config.daemon = { ...(config.daemon || DEFAULT_CONFIG.daemon), ...patch.daemon };
+    }
+    if (patch.antigravity) {
+      config.antigravity = { ...(config.antigravity || DEFAULT_CONFIG.antigravity), ...patch.antigravity };
+    }
+    if (patch.pricing) {
+      config.pricing = { ...(config.pricing || {}), ...patch.pricing };
+    }
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
+    console.log("💾 [配置保存] 配置已更新至 config.json");
+    eventBus.emit("broadcast", { type: "config_updated", data: config });
+    return config;
+  },
   getLogBuffer: () => logBuffer,
-  cleanImages: (maxKeep = 15) => cleanImagesFifo(maxKeep),
+  cleanImages: (maxKeep = (config.chatBehavior?.maxImages ?? 15)) => cleanImagesFifo(maxKeep),
   broadcastEvent: (type, data) => eventBus.emit("broadcast", { type, data })
 };
 
@@ -1473,8 +1666,19 @@ if (isMain) {
     try { fs.writeFileSync(inboxPath, "[]", "utf-8"); } catch {}
   }
 
-  internalServer.listen(config.daemon.internalHttpPort, () => {
-    console.log(`[Bridge Daemon] 内部通信网关已就绪，端口: ${config.daemon.internalHttpPort}`);
+  // 启动自愈与自动归档：每日定期清理超过 30 天的历史流水日志 (保留好感度与核心记忆)
+  try {
+    pruneOldRecords(30);
+  } catch {}
+  const dailyPruneInterval = setInterval(() => {
+    try {
+      pruneOldRecords(30);
+    } catch {}
+  }, 24 * 60 * 60 * 1000);
+  if (dailyPruneInterval.unref) dailyPruneInterval.unref();
+
+  internalServer.listen(config.daemon.internalHttpPort, "127.0.0.1", () => {
+    console.log(`[Bridge Daemon] 内部通信网关已就绪，端口: 127.0.0.1:${config.daemon.internalHttpPort}`);
   });
   connectSnowLuma();
   startPatrolScheduler();

@@ -18,6 +18,26 @@ const db = new DatabaseSync(path.join(DATA_DIR, "state.db"));
 
 db.exec("PRAGMA journal_mode = WAL;");
 db.exec("PRAGMA synchronous = NORMAL;");
+db.exec("PRAGMA busy_timeout = 5000;");
+
+/**
+ * 遇到并发写锁 (SQLITE_BUSY / database is locked) 时自动重试，提升多进程与高并发稳定性
+ */
+export function runWithRetry(fn, retries = 10, delayMs = 30) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return fn();
+    } catch (err) {
+      if (err.message && (err.message.includes("locked") || err.message.includes("busy")) && i < retries - 1) {
+        try {
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delayMs * (i + 1));
+        } catch {}
+        continue;
+      }
+      throw err;
+    }
+  }
+}
 
 // 1. 初始化数据库表结构（对齐多重人设与独立时空身位）
 db.exec(`
@@ -322,35 +342,41 @@ export function getAffinityLevelName(points) {
  * 好感度系统：读取用户好感度与称谓
  */
 export function getUserAffinity(userId) {
-  const query = db.prepare("SELECT user_id, affinity_points, level_name, last_reason FROM user_affinity WHERE user_id = ?");
-  let row = query.get(userId);
-  if (!row) {
-    db.prepare("INSERT INTO user_affinity (user_id, affinity_points, level_name, last_reason) VALUES (?, 30, '初识', '初始结识')").run(userId);
-    row = { user_id: userId, affinity_points: 30, level_name: "初识", last_reason: "初始结识" };
-  }
-  return row;
+  return runWithRetry(() => {
+    const query = db.prepare("SELECT user_id, affinity_points, level_name, last_reason FROM user_affinity WHERE user_id = ?");
+    let row = query.get(userId);
+    if (!row) {
+      try {
+        db.prepare("INSERT OR IGNORE INTO user_affinity (user_id, affinity_points, level_name, last_reason) VALUES (?, 30, '初识', '初始结识')").run(userId);
+      } catch {}
+      row = query.get(userId) || { user_id: userId, affinity_points: 30, level_name: "初识", last_reason: "初始结识" };
+    }
+    return row;
+  });
 }
 
 /**
  * 好感度系统：根据 [af:+3|理由] 动态加减分
  */
 export function modifyUserAffinity(userId, delta, reason = "") {
-  const current = getUserAffinity(userId);
-  let newPoints = (current.affinity_points ?? 30) + delta;
-  // 范围约束在 -100 ~ 100
-  if (newPoints > 100) newPoints = 100;
-  if (newPoints < -100) newPoints = -100;
+  return runWithRetry(() => {
+    const current = getUserAffinity(userId);
+    let newPoints = (current.affinity_points ?? 30) + delta;
+    // 范围约束在 -100 ~ 100
+    if (newPoints > 100) newPoints = 100;
+    if (newPoints < -100) newPoints = -100;
 
-  const newLevel = getAffinityLevelName(newPoints);
-  const effectiveReason = (reason && reason.trim()) ? reason.trim() : (current.last_reason || "互动更新");
+    const newLevel = getAffinityLevelName(newPoints);
+    const effectiveReason = (reason && reason.trim()) ? reason.trim() : (current.last_reason || "互动更新");
 
-  const stmt = db.prepare(`
-    UPDATE user_affinity 
-    SET affinity_points = ?, level_name = ?, last_reason = ?, last_interact = CURRENT_TIMESTAMP 
-    WHERE user_id = ?
-  `);
-  stmt.run(newPoints, newLevel, effectiveReason, userId);
-  return { newPoints, newLevel, reason: effectiveReason };
+    const stmt = db.prepare(`
+      UPDATE user_affinity 
+      SET affinity_points = ?, level_name = ?, last_reason = ?, last_interact = CURRENT_TIMESTAMP 
+      WHERE user_id = ?
+    `);
+    stmt.run(newPoints, newLevel, effectiveReason, userId);
+    return { newPoints, newLevel, reason: effectiveReason };
+  });
 }
 
 /**
@@ -849,26 +875,28 @@ export function recordTokenUsage({
   if (cUsd === null) cUsd = costObj.costUsd;
   mName = costObj.modelName;
 
-  const stmt = db.prepare(`
-    INSERT INTO token_usage (
-      session_key, group_id, persona,
-      prompt_chars, reply_chars,
-      estimated_prompt_tokens, estimated_reply_tokens,
-      reasoning_tokens, duration_ms, throughput_tps,
-      cost_cny, cost_usd, model_name,
-      cached_tokens, new_tokens, cache_hit_rate,
-      total_tokens
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  stmt.run(
-    sessionKey, gid, persona,
-    pChars, rChars,
-    pTokens, rTokens,
-    rReasoning, dMs, tps,
-    cCny, cUsd, mName,
-    calculatedCachedTokens, calculatedNewTokens, finalHitRate,
-    totalTokens
-  );
+  runWithRetry(() => {
+    const stmt = db.prepare(`
+      INSERT INTO token_usage (
+        session_key, group_id, persona,
+        prompt_chars, reply_chars,
+        estimated_prompt_tokens, estimated_reply_tokens,
+        reasoning_tokens, duration_ms, throughput_tps,
+        cost_cny, cost_usd, model_name,
+        cached_tokens, new_tokens, cache_hit_rate,
+        total_tokens
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(
+      sessionKey, gid, persona,
+      pChars, rChars,
+      pTokens, rTokens,
+      rReasoning, dMs, tps,
+      cCny, cUsd, mName,
+      calculatedCachedTokens, calculatedNewTokens, finalHitRate,
+      totalTokens
+    );
+  });
 
   return {
     sessionKey,
@@ -1026,7 +1054,18 @@ export function getTokenUsageStats({ days = 7, groupId = null, persona = null } 
 /**
  * 获取最近 Token 流水记录（包含缓存、思考Token、吞吐与成本）
  */
-export function getRecentTokenLogs(limit = 50) {
+export function getRecentTokenLogs(limit = 50, { excludeTest = false, groupId = null } = {}) {
+  const whereClauses = [];
+  const params = [];
+  if (excludeTest) {
+    whereClauses.push("session_key NOT LIKE 'test:%' AND session_key NOT LIKE 'group:test_%' AND session_key != 'group:123' AND (group_id != 0 OR session_key LIKE 'private:%')");
+  }
+  if (groupId) {
+    whereClauses.push("group_id = ?");
+    params.push(Number(groupId));
+  }
+  const whereSql = whereClauses.length ? `WHERE ${whereClauses.join(" AND ")}` : "";
+  params.push(limit);
   return db.prepare(`
     SELECT id, session_key, group_id, persona, prompt_chars, reply_chars,
            estimated_prompt_tokens, estimated_reply_tokens,
@@ -1035,9 +1074,27 @@ export function getRecentTokenLogs(limit = 50) {
            cached_tokens, new_tokens, cache_hit_rate,
            total_tokens, created_at
     FROM token_usage
+    ${whereSql}
     ORDER BY id DESC
     LIMIT ?
-  `).all(limit);
+  `).all(...params);
+}
+
+/**
+ * 清理测试流量流水记录 (session_key LIKE 'test:%' 等)
+ */
+export function cleanTestTokenLogs() {
+  const res = db.prepare(`
+    DELETE FROM token_usage 
+    WHERE session_key LIKE 'test:%' 
+       OR session_key LIKE 'group:test_%' 
+       OR session_key = 'group:123' 
+       OR (group_id = 0 AND session_key NOT LIKE 'private:%')
+  `).run();
+  return {
+    deletedCount: res.changes,
+    remaining: db.prepare("SELECT COUNT(*) as count FROM token_usage").get()?.count || 0
+  };
 }
 
 
@@ -1284,3 +1341,30 @@ export function clearChatMessages(sessionKey = null) {
   }
   return true;
 }
+
+/**
+ * 定期归档与清理陈旧流水日志 (保留好感度与核心记忆表)
+ * 默认清理超过 30 天的普通群聊流水日志与已过期的消息队列记录
+ */
+export function pruneOldRecords(days = 30) {
+  try {
+    const safeDays = Math.max(1, parseInt(days, 10) || 30);
+    const msgStmt = db.prepare(`DELETE FROM chat_messages WHERE created_at < datetime('now', '-' || ? || ' days')`);
+    const msgRes = msgStmt.run(safeDays);
+    let deletedCount = msgRes.changes || 0;
+
+    try {
+      const inboxStmt = db.prepare(`DELETE FROM inbox_queue WHERE created_at < datetime('now', '-' || ? || ' days')`);
+      const inboxRes = inboxStmt.run(safeDays);
+      deletedCount += (inboxRes.changes || 0);
+    } catch {}
+
+    console.log(`🧹 [SQLite 自动归档] 成功清理超过 ${safeDays} 天的历史流水日志 (共 ${deletedCount} 条)`);
+    return deletedCount;
+  } catch (err) {
+    console.warn(`[SQLite 自动归档失败]:`, err.message);
+    return 0;
+  }
+}
+
+export { getAntigravityBrainTokenStats } from "./antigravity-discovery.mjs";

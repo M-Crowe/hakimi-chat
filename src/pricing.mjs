@@ -1,13 +1,21 @@
-/**
- * 模型价格字典与成本计算器 (Pricing & Cost Calculator)
- * 计价单位：USD / 1,000,000 Tokens (每百万 Tokens)
- * 支持输入 Prompt、输出 Reply (含思考/推理)、以及 KV Cache 前缀缓存命中折扣
- * 汇率支持实时/固定换算 (默认 1 USD = 7.25 CNY)
- */
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+export const PROJECT_ROOT = path.resolve(__dirname, "..");
+export const PRICING_CONFIG_PATH = path.resolve(PROJECT_ROOT, "config/pricing.json");
+
+/**
+ * 默认汇率 (默认 1 USD = 7.25 CNY)
+ */
 export const DEFAULT_EXCHANGE_RATE_USD_CNY = 7.25;
 
-export const STANDARD_MODEL_PRICING = {
+/**
+ * 内置兜底模型阶梯价格表 (USD / 1,000,000 Tokens)
+ */
+export const DEFAULT_MODEL_PRICING = {
   // Google Gemini 系列
   "gemini-2.5-pro": {
     name: "Gemini 2.5 Pro",
@@ -81,6 +89,63 @@ export const STANDARD_MODEL_PRICING = {
 };
 
 /**
+ * 内存中动态持有的标准模型价格字典
+ */
+export let STANDARD_MODEL_PRICING = { ...DEFAULT_MODEL_PRICING };
+export let CURRENT_EXCHANGE_RATE = DEFAULT_EXCHANGE_RATE_USD_CNY;
+
+/**
+ * 从 config/pricing.json 读取并同步最新模型费率
+ */
+export function loadPricingConfig() {
+  if (fs.existsSync(PRICING_CONFIG_PATH)) {
+    try {
+      const raw = fs.readFileSync(PRICING_CONFIG_PATH, "utf-8");
+      const data = JSON.parse(raw);
+      if (data && typeof data === "object") {
+        if (data.models && typeof data.models === "object") {
+          STANDARD_MODEL_PRICING = { ...DEFAULT_MODEL_PRICING, ...data.models };
+        }
+        if (typeof data.exchangeRateUsdToCny === "number" && data.exchangeRateUsdToCny > 0) {
+          CURRENT_EXCHANGE_RATE = data.exchangeRateUsdToCny;
+        }
+        return {
+          exchangeRateUsdToCny: CURRENT_EXCHANGE_RATE,
+          models: STANDARD_MODEL_PRICING
+        };
+      }
+    } catch (err) {
+      console.warn("[Pricing] 读取 config/pricing.json 失败，使用内置默认定价:", err.message);
+    }
+  }
+  return {
+    exchangeRateUsdToCny: CURRENT_EXCHANGE_RATE,
+    models: STANDARD_MODEL_PRICING
+  };
+}
+
+/**
+ * 保存并热更新费率配置到 config/pricing.json
+ */
+export function savePricingConfig(newConfig = {}) {
+  const cfgDir = path.dirname(PRICING_CONFIG_PATH);
+  if (!fs.existsSync(cfgDir)) {
+    fs.mkdirSync(cfgDir, { recursive: true });
+  }
+
+  const payload = {
+    exchangeRateUsdToCny: Number(newConfig.exchangeRateUsdToCny) || CURRENT_EXCHANGE_RATE,
+    models: newConfig.models && typeof newConfig.models === "object" ? newConfig.models : STANDARD_MODEL_PRICING
+  };
+
+  fs.writeFileSync(PRICING_CONFIG_PATH, JSON.stringify(payload, null, 2), "utf-8");
+  return loadPricingConfig();
+}
+
+// 模块加载时执行首次初始化
+loadPricingConfig();
+
+/**
  * 依据传入的模型名称匹配对应的价格策略 (支持模糊匹配与别名)
  */
 export function resolveModelPricing(modelName = "", customPricing = {}) {
@@ -92,7 +157,7 @@ export function resolveModelPricing(modelName = "", customPricing = {}) {
     return { ...customModels[norm], id: norm };
   }
 
-  // 2. 匹配标准库
+  // 2. 匹配外置 JSON 或标准库
   if (STANDARD_MODEL_PRICING[norm]) {
     return { ...STANDARD_MODEL_PRICING[norm], id: norm };
   }
@@ -129,7 +194,7 @@ export function calculateTokenCost({
   customPricing = {}
 } = {}) {
   const pricing = resolveModelPricing(modelName, customPricing);
-  const exchangeRate = Number(customPricing.exchangeRateUsdToCny) || DEFAULT_EXCHANGE_RATE_USD_CNY;
+  const exchangeRate = Number(customPricing.exchangeRateUsdToCny) || CURRENT_EXCHANGE_RATE;
 
   // 有效非缓存输入 Tokens
   const safeCachedTokens = Math.min(promptTokens, Math.max(0, cachedTokens || 0));

@@ -77,11 +77,15 @@
     }
 
     .font-telemetry {
-      font-family: 'Share Tech Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-family: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", "Fira Code", Menlo, Monaco, Consolas, "PingFang SC", "Microsoft YaHei", monospace;
+      font-feature-settings: "tnum";
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.01em;
     }
 
     .font-avionics {
       font-family: 'Chakra Petch', system-ui, -apple-system, sans-serif;
+      letter-spacing: 0.03em;
     }
 
     /* Custom scrollbars */
@@ -298,112 +302,102 @@
 
 </head>
 <body class="bg-[#07090f] text-slate-200 min-h-screen flex flex-col selection:bg-amber-500 selection:text-black">
-  <div id="app" class="flex flex-col flex-1 h-screen overflow-hidden">
+  <div id="app" class="flex flex-col md:flex-row flex-1 h-screen overflow-hidden">
     
-    <!-- Top Navigation Bar -->
-    
-    <!-- Top Avionics Console Header (NASA Mission Control Bar) -->
-    <header class="h-16 border-b border-[#232d42] bg-[#0c101a] px-5 flex items-center justify-between shrink-0 z-20 shadow-xl relative">
-      <!-- Top Decorative Bevel Line -->
-      <div class="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#3b4d6e] to-transparent"></div>
-      
-      <div class="flex items-center space-x-3.5">
-        <!-- Telemetry Unit Badge -->
-        <div class="w-10 h-10 rounded-lg bg-gradient-to-b from-[#25324a] to-[#121824] border border-[#3b4d6e] flex items-center justify-center text-xl shadow-lg relative overflow-hidden group">
-          <div class="screw screw-tl"></div>
-          <div class="screw screw-br"></div>
-          <span class="filter drop-shadow-[0_0_6px_rgba(245,158,11,0.6)]">🛰️</span>
-        </div>
-        
-        <div>
-          <div class="flex items-center space-x-2">
-            <span class="font-avionics font-bold text-base tracking-wider text-white flex items-center space-x-1.5">
-              <span>HAKIMI MISSION CONTROL</span>
-            </span>
-            <span class="mil-label border-[#3b4d6e] text-amber-400 bg-amber-950/30 font-telemetry">AVIONICS // v2.0</span>
+    <!-- Left Navigation Sidebar -->
+    <aside class="w-full md:w-64 bg-[#0c101a] border-b md:border-b-0 md:border-r border-[#232d42] flex flex-col shrink-0 md:h-screen select-none z-30 shadow-2xl relative">
+      <!-- Decorative Edge Line -->
+      <div class="hidden md:block absolute top-0 bottom-0 right-0 w-[1px] bg-gradient-to-b from-[#3b4d6e] via-[#1a2336] to-transparent"></div>
+
+      <!-- Top Branding Section -->
+      <div class="p-4 border-b border-[#1c2638] flex items-center justify-between shrink-0">
+        <div class="flex items-center space-x-3 min-w-0">
+          <div class="w-10 h-10 rounded-lg bg-gradient-to-b from-[#25324a] to-[#121824] border border-[#3b4d6e] flex items-center justify-center text-xl shadow-md shrink-0">
+            <span>🛰️</span>
           </div>
-          
-          <!-- Telemetry Status Lights -->
-          <div class="text-xs text-slate-400 flex items-center space-x-2 mt-0.5 font-telemetry">
-            <span class="flex items-center space-x-1">
-              <span class="text-slate-500">OPERATOR:</span>
-              <b class="glow-cyan font-bold">{{ activePersonaDisplayName }}</b>
-            </span>
-            <span class="text-slate-600">|</span>
-            <span class="flex items-center space-x-1.5">
-              <span class="w-2 h-2 rounded-full border border-black/50" :class="systemStatus.snowLuma?.connected ? 'bg-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse' : 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.8)]'"></span>
-              <span :class="systemStatus.snowLuma?.connected ? 'text-emerald-300' : 'text-red-400'">LINK-{{ systemStatus.snowLuma?.connected ? 'ONLINE' : 'OFFLINE' }}</span>
-            </span>
-            <span class="text-slate-600">|</span>
-            <!-- Antigravity Quota Status Pill -->
-            <button @click="currentTab = 'tokens'" title="点击查看 Antigravity 配额详情与用量看板"
-                    class="flex items-center space-x-1.5 px-2 py-0.5 rounded border transition slot-inset"
-                    :class="!quotaStatus.success ? 'text-slate-400 border-[#232d42] hover:border-slate-500' : (quotaStatus.isThrottled || quotaStatus.isExhausted ? 'text-red-300 border-red-500/50 bg-red-950/30' : (quotaStatus.lowestRemainingPercent < 40 ? 'text-amber-300 border-amber-500/50 bg-amber-950/30' : 'text-emerald-300 border-emerald-500/40 bg-emerald-950/20'))">
-              <span class="w-1.5 h-1.5 rounded-full" :class="!quotaStatus.success ? 'bg-slate-500' : (quotaStatus.isThrottled ? 'bg-red-400 animate-ping' : (quotaStatus.lowestRemainingPercent < 40 ? 'bg-amber-400' : 'bg-emerald-400'))"></span>
-              <span class="text-[11px] font-telemetry">QUOTA {{ !quotaStatus.success ? (quotaStatus.error ? 'OFFLINE' : 'PROBING') : (quotaStatus.lowestRemainingPercent !== undefined ? quotaStatus.lowestRemainingPercent + '%' : 'READY') }}</span>
-            </button>
+          <div class="min-w-0">
+            <h1 class="text-sm font-bold text-white tracking-wide truncate">哈基米控制台</h1>
+            <div class="text-[11px] text-slate-400 flex items-center space-x-1.5 mt-0.5 font-telemetry">
+              <span class="w-2 h-2 rounded-full border border-black/40"
+                    :class="systemStatus.snowLuma?.connected ? 'bg-emerald-400 shadow-[0_0_6px_rgba(16,185,129,0.8)] animate-pulse' : 'bg-red-500'"></span>
+              <span class="truncate">{{ systemStatus.snowLuma?.connected ? 'QQ 已在线' : 'QQ 离线' }}</span>
+              <span class="text-slate-600">·</span>
+              <span class="text-amber-300 font-semibold truncate">{{ activePersonaDisplayName }}</span>
+            </div>
           </div>
         </div>
+        <button @click="openIntercomModal" class="md:hidden text-cyan-400 hover:text-cyan-300 p-1.5 rounded bg-[#182133] border border-[#232d42] text-xs" title="发送广播">
+          📢
+        </button>
       </div>
 
-      <!-- Physical Selector Rocker Tabs (CH-01 ~ CH-06) -->
-      <nav class="hidden md:flex items-center space-x-1.5 slot-inset p-1.5 rounded-lg border border-[#1e283c]">
+      <!-- Navigation Links (Vertical on Desktop, Horizontal Scroll on Mobile) -->
+      <nav class="flex md:flex-col px-3 py-2 md:py-3 space-x-2 md:space-x-0 md:space-y-1.5 overflow-x-auto md:overflow-x-hidden md:overflow-y-auto shrink-0 md:flex-1">
         <button v-for="tab in tabs" :key="tab.id" @click="currentTab = tab.id"
-          class="px-3 py-1.5 rounded text-xs font-avionics tracking-wider transition-all flex items-center space-x-1.5 user-select-none"
+          class="flex items-center space-x-2.5 px-3 py-2.5 rounded-lg text-xs transition-all whitespace-nowrap text-left group"
           :class="currentTab === tab.id 
-            ? 'btn-tactile-amber text-white font-bold shadow-[0_2px_8px_rgba(245,158,11,0.4)]' 
-            : 'text-slate-400 hover:text-slate-200 hover:bg-[#182133]'">
-          <span class="font-telemetry text-[10px] opacity-80" v-if="tab.channel">[{{ tab.channel }}]</span>
-          <span>{{ tab.icon }}</span>
-          <span>{{ tab.name }}</span>
+            ? 'bg-gradient-to-r from-amber-500/20 to-amber-500/5 text-amber-300 font-bold border-l-4 border-amber-500 shadow-[0_2px_10px_rgba(245,158,11,0.2)] pl-2' 
+            : 'text-slate-400 hover:text-slate-200 hover:bg-[#151c2c] border-l-4 border-transparent'">
+          <span class="text-base group-hover:scale-110 transition-transform shrink-0">{{ tab.icon }}</span>
+          <span class="tracking-wide">{{ tab.name }}</span>
         </button>
       </nav>
 
-      <!-- Right Physical Controls -->
-      <div class="flex items-center space-x-3">
-        <button @click="openIntercomModal" class="px-3 py-1.5 rounded btn-tactile-cyan text-xs font-avionics tracking-wider flex items-center space-x-1.5">
-          <span>📢</span>
-          <span>COMM BROADCAST</span>
+      <!-- Bottom Status & Actions Area -->
+      <div class="hidden md:block p-3 border-t border-[#1c2638] bg-[#090d16] space-y-2 shrink-0">
+        <!-- Antigravity Quota Status Card -->
+        <button @click="currentTab = 'tokens'" title="点击查看详细配额与用量"
+          class="w-full text-left p-2 rounded-lg border transition block slot-inset"
+          :class="!quotaStatus.success ? 'text-slate-400 border-[#232d42] bg-[#101624] hover:border-slate-500' : (quotaStatus.isThrottled || quotaStatus.isExhausted ? 'text-red-300 border-red-500/50 bg-red-950/20' : (quotaStatus.lowestRemainingPercent < 40 ? 'text-amber-300 border-amber-500/50 bg-amber-950/20' : 'text-emerald-300 border-emerald-500/40 bg-emerald-950/20'))">
+          <div class="flex items-center justify-between text-[11px] font-telemetry">
+            <span class="flex items-center space-x-1.5">
+              <span class="w-1.5 h-1.5 rounded-full" :class="!quotaStatus.success ? 'bg-slate-500' : (quotaStatus.isThrottled ? 'bg-red-400 animate-ping' : (quotaStatus.lowestRemainingPercent < 40 ? 'bg-amber-400' : 'bg-emerald-400'))"></span>
+              <span>AI 配额状态</span>
+            </span>
+            <span class="font-bold">{{ !quotaStatus.success ? (quotaStatus.error ? '离线' : '探测中') : (quotaStatus.lowestRemainingPercent !== undefined ? quotaStatus.lowestRemainingPercent + '%' : '就绪') }}</span>
+          </div>
         </button>
-        <div class="flex items-center space-x-2 border-l border-[#222d42] pl-3 font-telemetry">
-          <span class="w-2.5 h-2.5 rounded-full border border-black/60" :class="wsConnected ? 'bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.8)]' : 'bg-amber-400'"></span>
-          <span class="text-xs text-slate-400">{{ wsConnected ? 'TELEMETRY' : 'CONNECTING' }}</span>
-          <button @click="logout" title="断开控制台鉴权" class="text-slate-500 hover:text-red-400 text-sm ml-2 transition">🚪</button>
+
+        <!-- Quick Action Buttons -->
+        <div class="flex items-center space-x-2">
+          <button @click="openIntercomModal" class="flex-1 py-1.5 px-2 rounded btn-tactile-cyan text-[11px] flex items-center justify-center space-x-1" title="向群聊/私聊发送广播消息">
+            <span>📢</span>
+            <span>发广播</span>
+          </button>
+          <button @click="reloadDaemonConfig" class="py-1.5 px-2.5 rounded btn-tactile text-[11px] text-slate-300 hover:text-white" title="重新加载系统配置与人设">
+            <span>🔄</span>
+          </button>
+          <button @click="logout" class="py-1.5 px-2.5 rounded btn-tactile-red text-[11px] text-slate-300 hover:text-red-300" title="退出管理控制台鉴权">
+            <span>🚪</span>
+          </button>
+        </div>
+
+        <div class="flex items-center justify-between text-[10px] text-slate-500 font-telemetry pt-1 px-1">
+          <span class="flex items-center space-x-1">
+            <span class="w-1.5 h-1.5 rounded-full" :class="wsConnected ? 'bg-cyan-400 shadow-[0_0_6px_rgba(6,182,212,0.8)]' : 'bg-amber-400'"></span>
+            <span>{{ wsConnected ? '实时推流在线' : '重连中...' }}</span>
+          </span>
+          <span>Port 5120</span>
         </div>
       </div>
-    </header>
-
-
-    <!-- Mobile Nav Bar -->
-    <div class="md:hidden flex overflow-x-auto bg-slate-900 border-b border-darkBorder px-3 py-2 space-x-2 shrink-0">
-      <button v-for="tab in tabs" :key="tab.id" @click="currentTab = tab.id"
-        class="px-3 py-1 rounded-md text-xs whitespace-nowrap"
-        :class="currentTab === tab.id ? 'bg-brand-600 text-white' : 'text-slate-400 bg-slate-800'">
-        {{ tab.icon }} {{ tab.name }}
-      </button>
-    </div>
+    </aside>
 
     <!-- Main Container -->
-    <main class="flex-1 overflow-y-auto p-4 md:p-6 bg-[#0a0f1d]">
+    <div class="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+      <main class="flex-1 overflow-y-auto p-4 md:p-6 bg-[#0a0f1d]">
       
-      <!-- 1. 通信信道机架分配 (Channel Rack Controller) -->
+      <!-- 1. 群聊管理 -->
       <div v-if="currentTab === 'groups'" class="max-w-7xl mx-auto space-y-6">
         <div class="flex items-center justify-between">
           <div>
-            <div class="flex items-center space-x-2">
-              <span class="mil-label border-[#3b4d6e] text-cyan-400 bg-cyan-950/40">RACK 01 // COMMS</span>
-              <h2 class="text-xl font-avionics font-bold text-white flex items-center space-x-2">
-                <span>📡</span>
-                <span>通信信道机架分配 (Communications Channel Rack)</span>
-              </h2>
-            </div>
-            <p class="text-xs text-slate-400 mt-1 font-telemetry">
-              授权频段白名单 • 个性化信道呼号 • 独立双态物理开关 • 触发模式拨码矩阵
-            </p>
+            <h2 class="text-xl font-bold text-white flex items-center space-x-2">
+              <span>📡</span>
+              <span>群聊管理</span>
+            </h2>
           </div>
           <button @click="openAddGroupModal" class="btn-tactile-cyan px-4 py-2 rounded text-xs font-avionics tracking-wider flex items-center space-x-1.5">
             <span>➕</span>
-            <span>INSTALL NEW CHANNEL</span>
+            <span>添加托管群聊</span>
           </button>
         </div>
 
@@ -471,20 +465,14 @@
         </div>
       </div>
 
-      <!-- 2. 神经矩阵调配舱 (Neuro-Persona Synthesis Bay) -->
+      <!-- 2. 人设管理 -->
       <div v-if="currentTab === 'persona'" class="max-w-7xl mx-auto space-y-6">
         <div class="flex items-center justify-between">
           <div>
-            <div class="flex items-center space-x-2">
-              <span class="mil-label border-[#3b4d6e] text-purple-400 bg-purple-950/40">MATRIX 02 // COGNITION</span>
-              <h2 class="text-xl font-avionics font-bold text-white flex items-center space-x-2">
-                <span>🧬</span>
-                <span>神经矩阵与时空身位调配舱 (Neuro-Persona Bay)</span>
-              </h2>
-            </div>
-            <p class="text-xs text-slate-400 mt-1 font-telemetry">
-              全频段共鸣统一身位 • 物理卡带热插拔切换 • 人设卡实时编辑热重载 • 时空坐标与心境微调
-            </p>
+            <h2 class="text-xl font-bold text-white flex items-center space-x-2">
+              <span>🧬</span>
+              <span>人设管理与状态</span>
+            </h2>
           </div>
         </div>
 
@@ -543,14 +531,14 @@
               </div>
               <div class="space-y-2 text-xs">
                 <div>
-                  <input v-model="editLocation" type="text" placeholder="更新所在地点..." class="slot-inset w-full rounded px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500 font-telemetry">
+                  <input v-model="relocateForm.location" type="text" placeholder="更新所在地点..." class="slot-inset w-full rounded px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500 font-telemetry">
                 </div>
                 <div>
-                  <input v-model="editAction" type="text" placeholder="更新当前动作..." class="slot-inset w-full rounded px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500 font-telemetry">
+                  <input v-model="relocateForm.action" type="text" placeholder="更新当前动作..." class="slot-inset w-full rounded px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500 font-telemetry">
                 </div>
                 <div class="grid grid-cols-2 gap-2">
-                  <input v-model="editMood" type="text" placeholder="当前心情..." class="slot-inset rounded px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500 font-telemetry">
-                  <button @click="updateLocationAction" class="btn-tactile-cyan rounded px-3 py-1.5 text-xs font-avionics tracking-wider">
+                  <input v-model="relocateForm.mood" type="text" placeholder="当前心情..." class="slot-inset rounded px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500 font-telemetry">
+                  <button @click="submitRelocate" class="btn-tactile-cyan rounded px-3 py-1.5 text-xs font-avionics tracking-wider">
                     CALIBRATE // 校准
                   </button>
                 </div>
@@ -596,7 +584,7 @@
                 </div>
 
                 <div class="mt-4 pt-3 border-t border-[#1e283c] flex items-center justify-between text-xs relative z-10">
-                  <button @click.stop="openEditPersonaCard(p)" class="btn-tactile px-2.5 py-1 rounded text-cyan-400 hover:text-cyan-300 flex items-center space-x-1 font-avionics">
+                  <button @click.stop="selectPersonaForEdit(p)" class="btn-tactile px-2.5 py-1 rounded text-cyan-400 hover:text-cyan-300 flex items-center space-x-1 font-avionics">
                     <span>📝</span>
                     <span>EDIT CARTRIDGE CARD</span>
                   </button>
@@ -635,28 +623,22 @@
         </div>
       </div>
 
-      <!-- 3. 电传示波记录仪 (Telemetry Oscilloscope & Teleprinter) -->
+      <!-- 3. 实时消息 -->
       <div v-if="currentTab === 'messages'" class="max-w-7xl mx-auto space-y-6 flex flex-col h-[calc(100vh-130px)]">
         <div class="flex items-center justify-between shrink-0">
           <div>
-            <div class="flex items-center space-x-2">
-              <span class="mil-label border-[#3b4d6e] text-cyan-400 bg-cyan-950/40">TELEMETRY 03 // BEAM</span>
-              <h2 class="text-xl font-avionics font-bold text-white flex items-center space-x-2">
-                <span>⚡</span>
-                <span>电传示波记录仪与智能推流 (Oscilloscope & Teleprinter)</span>
-              </h2>
-            </div>
-            <p class="text-xs text-slate-400 mt-1 font-telemetry">
-              WEBSOCKET 双向载波推流 • 社交动力学决策捕捉 (REPLY / INTERJECT / DIVE 潜水时长) • 15格电影胶片式 FIFO 图片仓
-            </p>
+            <h2 class="text-xl font-bold text-white flex items-center space-x-2">
+              <span>💬</span>
+              <span>实时消息与决策</span>
+            </h2>
           </div>
           <div class="flex items-center space-x-2 font-telemetry">
             <select v-model="messageFilterGroup" @change="loadHistoryMessages" class="slot-inset border border-[#2b3952] rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500">
-              <option value="">ALL CHANNELS & DIRECT</option>
-              <option v-for="g in groups" :key="g.group_id" :value="'group:' + g.group_id">{{ g.group_name || ('信道 ' + g.group_id) }}</option>
+              <option value="">全部群聊与私聊</option>
+              <option v-for="g in groups" :key="g.group_id" :value="'group:' + g.group_id">{{ g.group_name || ('群聊 ' + g.group_id) }}</option>
             </select>
-            <button @click="clearLiveFeed" class="btn-tactile px-3 py-1.5 rounded text-xs font-avionics text-slate-300">
-              CLEAR SCREEN
+            <button @click="clearLiveFeed" class="btn-tactile px-3 py-1.5 rounded text-xs text-slate-300">
+              清空屏幕
             </button>
           </div>
         </div>
@@ -700,19 +682,19 @@
                       <span class="font-bold font-avionics text-xs" :class="(msg.is_bot || msg.isBot) ? 'glow-amber font-bold' : 'text-slate-200'">
                         {{ msg.sender_name || (msg.is_bot || msg.isBot ? activePersonaDisplayName : ('USER ' + getValidSenderId(msg))) }}
                       </span>
-                      <span v-if="msg.group_id" class="mil-label text-slate-400 text-[9px]">CH-{{ msg.group_id }}</span>
+                      <span v-if="msg.group_id || msg.session_key" class="mil-label text-slate-400 text-[9px]">{{ msg.group_id ? ('CH-' + msg.group_id) : msg.session_key }}</span>
                       <span v-if="msg.is_bot || msg.isBot" class="mil-label text-amber-300 border-amber-600/50 text-[9px]">AI CARRIER</span>
                     </div>
-                    <span class="text-[10px] text-slate-500">{{ msg.created_at || 'RECENT' }}</span>
+                    <span class="text-[10px] text-slate-500">{{ msg.created_at || msg.time || 'RECENT' }}</span>
                   </div>
 
-                  <div class="mt-1.5 text-xs text-slate-200 leading-relaxed whitespace-pre-wrap font-sans break-words">{{ msg.raw_message || msg.content }}</div>
+                  <div class="mt-1.5 text-xs text-slate-200 leading-relaxed whitespace-pre-wrap font-sans break-words select-text">{{ msg.message_text || msg.text || msg.message || msg.raw_message || msg.content }}</div>
 
                   <!-- Inline Images in Message -->
-                  <div v-if="msg.images && parseImages(msg.images).length > 0" class="mt-2 flex flex-wrap gap-2">
+                  <div v-if="parseImages(msg.images).length > 0" class="mt-2 flex flex-wrap gap-2">
                     <img v-for="(img, imgIdx) in parseImages(msg.images)" :key="imgIdx"
                          :src="img"
-                         @click="previewImage(img)"
+                         @click="openImagePreview(img)"
                          class="max-w-[120px] max-h-[120px] rounded border border-[#2b3952] hover:opacity-80 transition cursor-pointer object-cover">
                   </div>
                 </div>
@@ -721,7 +703,7 @@
 
             <!-- Scroll to bottom notification badge -->
             <div v-if="hasNewMessagesBelow" class="absolute bottom-16 right-6 z-20">
-              <button @click="scrollToBottom(true)" class="btn-tactile-amber px-3 py-1.5 rounded text-xs font-avionics tracking-wider shadow-lg flex items-center space-x-1.5">
+              <button @click="scrollToBottomManual" class="btn-tactile-amber px-3 py-1.5 rounded text-xs font-avionics tracking-wider shadow-lg flex items-center space-x-1.5">
                 <span>⬇️</span>
                 <span>NEW TELEMETRY ARRIVED</span>
               </button>
@@ -797,20 +779,14 @@
         </div>
       </div>
 
-      <!-- 4. 晶体数据与记忆资产归档柜 (Holographic Crystal Vault) -->
+      <!-- 4. 记忆与档案 -->
       <div v-if="currentTab === 'vault'" class="max-w-7xl mx-auto space-y-6">
         <div class="flex items-center justify-between">
           <div>
-            <div class="flex items-center space-x-2">
-              <span class="mil-label border-[#3b4d6e] text-pink-400 bg-pink-950/40">VAULT 04 // MEMORY</span>
-              <h2 class="text-xl font-avionics font-bold text-white flex items-center space-x-2">
-                <span>💎</span>
-                <span>晶体数据与长期记忆归档柜 (Holographic Crystal Vault)</span>
-              </h2>
-            </div>
-            <p class="text-xs text-slate-400 mt-1 font-telemetry">
-              用户好感阶梯排行榜 • 跨会话长期记忆切片快照 • 群聊顺风车网络黑话学习库
-            </p>
+            <h2 class="text-xl font-bold text-white flex items-center space-x-2">
+              <span>💎</span>
+              <span>记忆与档案</span>
+            </h2>
           </div>
           <div class="flex items-center space-x-2 font-telemetry">
             <button v-for="sub in vaultTabs" :key="sub.id" @click="vaultSubTab = sub.id"
@@ -931,7 +907,7 @@
         <!-- Subtab 3: Slangs Dictionary -->
         <div v-if="vaultSubTab === 'slangs'" class="space-y-4">
           <div class="rack-card rounded-lg p-4 border border-[#253147] flex items-center justify-between">
-            <input v-model="slangSearch" @input="loadSlangList" type="text" placeholder="搜索网络黑话与术语..." class="slot-inset rounded px-3 py-1.5 text-xs text-white placeholder-slate-500 w-64 focus:outline-none focus:border-amber-500 font-telemetry">
+            <input v-model="slangSearch" @input="loadSlangs" type="text" placeholder="搜索网络黑话与术语..." class="slot-inset rounded px-3 py-1.5 text-xs text-white placeholder-slate-500 w-64 focus:outline-none focus:border-amber-500 font-telemetry">
             <button @click="openAddSlangModal" class="btn-tactile-cyan px-3.5 py-1.5 rounded text-xs font-avionics tracking-wider">
               ➕ LEARN NEW SLANG // 录入黑话
             </button>
@@ -956,27 +932,21 @@
         </div>
       </div>
 
-      <!-- 5. Token 消耗与用量监测 (Token Monitoring) -->
+      <!-- 5. Token 用量 -->
       <div v-if="currentTab === 'tokens'" class="max-w-7xl mx-auto space-y-6">
         <div class="flex items-center justify-between">
           <div>
-            <div class="flex items-center space-x-2">
-              <span class="mil-label border-[#3b4d6e] text-amber-400 bg-amber-950/40">REACTOR 05 // ENERGY</span>
-              <h2 class="text-xl font-avionics font-bold text-white flex items-center space-x-2">
-                <span>☢️</span>
-                <span>反应堆核心配额与流量监测 (Reactor Quota & Telemetry)</span>
-              </h2>
-            </div>
-            <p class="text-xs text-slate-400 mt-1 font-telemetry">
-              ANTIGRAVITY 环回配额防爆看板 • 深度思考推理 TOKEN • 瞬时生成速率 (TOK/S) • 多币种成本核算 (¥ / $)
-            </p>
+            <h2 class="text-xl font-bold text-white flex items-center space-x-2">
+              <span>📊</span>
+              <span>Token 用量与配额监控</span>
+            </h2>
           </div>
           <div class="flex items-center space-x-2 font-telemetry">
-            <span class="text-slate-500 text-xs">WINDOW:</span>
+            <span class="text-slate-500 text-xs">时间范围:</span>
             <select v-model="tokenDays" @change="loadTokenStats" class="slot-inset border border-[#2b3952] rounded px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500 font-telemetry">
-              <option :value="7">PAST 07 DAYS</option>
-              <option :value="14">PAST 14 DAYS</option>
-              <option :value="30">PAST 30 DAYS</option>
+              <option :value="7">最近 7 天</option>
+              <option :value="14">最近 14 天</option>
+              <option :value="30">最近 30 天</option>
             </select>
           </div>
         </div>
@@ -1090,83 +1060,287 @@
           </div>
         </div>
 
+        <!-- Antigravity 伴聊大脑物理交互用量 (实时同步 IDE Token Monitor) -->
+        <div class="rack-card rounded-lg p-5 border border-[#253147] shadow-2xl relative overflow-hidden">
+          <div class="screw screw-tl"></div>
+          <div class="screw screw-tr"></div>
+          <div class="screw screw-bl"></div>
+          <div class="screw screw-br"></div>
+
+          <!-- Header -->
+          <div class="flex flex-wrap items-center justify-between gap-4 mb-4 relative z-10">
+            <div class="flex items-center space-x-3.5">
+              <div class="w-11 h-11 rounded-lg bg-gradient-to-b from-[#2a3854] to-[#121927] border border-[#40567a] flex items-center justify-center text-2xl shadow-lg relative">
+                <span class="filter drop-shadow-[0_0_8px_rgba(245,158,11,0.8)]">🤖</span>
+              </div>
+              <div>
+                <div class="flex items-center space-x-2.5">
+                  <h3 class="text-base font-avionics font-bold text-white tracking-wide">ANTIGRAVITY 伴聊大脑物理用量</h3>
+                  <span class="mil-label font-telemetry font-bold border-amber-500/60 text-amber-300 bg-amber-950/40 glow-amber">
+                    ● IDE TOKEN MONITOR 实时同步
+                  </span>
+                  <span v-if="tokenStats.antigravityBrain?.title" class="mil-label border-cyan-500/40 text-cyan-300 bg-cyan-950/40 font-telemetry truncate max-w-[240px]">
+                    会话: {{ tokenStats.antigravityBrain.title }}
+                  </span>
+                </div>
+                <p class="text-xs text-slate-400 mt-1 font-telemetry">
+                  TRANSCRIPT 物理遥测 // 包含完整 SYSTEM PROMPT、MCP 工具树与 GOOGLE KV CACHE 高速复用
+                </p>
+              </div>
+            </div>
+
+            <!-- View Mode Switch Pills -->
+            <div class="flex items-center space-x-2 font-telemetry">
+              <span class="text-xs text-slate-400 mr-1">视图维度:</span>
+              <div class="inline-flex rounded-lg p-1 bg-[#090d16] border border-[#202b3f]">
+                <button @click="setTokenViewMode('physical')"
+                        class="px-3 py-1 rounded text-xs font-avionics transition-colors flex items-center space-x-1.5"
+                        :class="tokenViewMode === 'physical' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50 glow-amber font-bold' : 'text-slate-400 hover:text-slate-200'">
+                  <span>🤖</span>
+                  <span>物理交互总量 (IDE {{ ((tokenStats.antigravityBrain?.totalTokens || 0) / 1000000).toFixed(2) }}M)</span>
+                </button>
+                <button @click="setTokenViewMode('payload')"
+                        class="px-3 py-1 rounded text-xs font-avionics transition-colors flex items-center space-x-1.5"
+                        :class="tokenViewMode === 'payload' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 glow-cyan font-bold' : 'text-slate-400 hover:text-slate-200'">
+                  <span>💬</span>
+                  <span>QQ 消息纯文本载荷 ({{ ((tokenStats.summary?.total_tokens || 0) / 1000000).toFixed(2) }}M)</span>
+                </button>
+              </div>
+              <button @click="loadTokenStats" class="btn-tactile px-3 py-1.5 rounded text-xs font-avionics tracking-wider flex items-center space-x-1 ml-2">
+                <span>🔄 刷新</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 5 Key Physical Gauges -->
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 relative z-10">
+            <!-- 1. Physical Total -->
+            <div class="bg-[#05070d] rounded-lg p-3.5 border border-[#1e293b] space-y-1 relative">
+              <div class="mil-label text-amber-400">TOTAL PHYSICAL TOKENS</div>
+              <div class="text-2xl font-bold font-telemetry glow-amber mt-1">
+                {{ (tokenStats.antigravityBrain?.totalTokens || 0).toLocaleString() }}
+              </div>
+              <div class="text-[11px] text-amber-300/80 font-telemetry flex items-center justify-between pt-1 border-t border-[#1a2336]">
+                <span>IDE 对应总量:</span>
+                <span class="font-bold">~{{ ((tokenStats.antigravityBrain?.totalTokens || 0) / 1000000).toFixed(2) }}M</span>
+              </div>
+            </div>
+
+            <!-- 2. KV Cache Read -->
+            <div class="bg-[#05070d] rounded-lg p-3.5 border border-[#1e293b] space-y-1 relative">
+              <div class="mil-label text-cyan-400">KV CACHE 复用命中</div>
+              <div class="text-2xl font-bold font-telemetry glow-cyan mt-1">
+                {{ (tokenStats.antigravityBrain?.cachedTokens || 0).toLocaleString() }}
+              </div>
+              <div class="text-[11px] text-cyan-300/80 font-telemetry flex items-center justify-between pt-1 border-t border-[#1a2336]">
+                <span>缓存复用率:</span>
+                <span class="font-bold">{{ tokenStats.antigravityBrain?.cacheHitPercent || '0.0' }}%</span>
+              </div>
+            </div>
+
+            <!-- 3. New Prompt Input -->
+            <div class="bg-[#05070d] rounded-lg p-3.5 border border-[#1e293b] space-y-1 relative">
+              <div class="mil-label text-slate-300">NEW PROMPT INPUT</div>
+              <div class="text-2xl font-bold font-telemetry text-slate-100 mt-1">
+                {{ (tokenStats.antigravityBrain?.inputTokens || 0).toLocaleString() }}
+              </div>
+              <div class="text-[11px] text-slate-400 font-telemetry flex items-center justify-between pt-1 border-t border-[#1a2336]">
+                <span>提示词增量:</span>
+                <span class="font-bold">~{{ ((tokenStats.antigravityBrain?.inputTokens || 0) / 1000).toFixed(1) }}k</span>
+              </div>
+            </div>
+
+            <!-- 4. Output Generation -->
+            <div class="bg-[#05070d] rounded-lg p-3.5 border border-[#1e293b] space-y-1 relative">
+              <div class="mil-label text-purple-400">MODEL OUTPUT 生成</div>
+              <div class="text-2xl font-bold font-telemetry text-purple-300 mt-1" style="text-shadow: 0 0 8px rgba(192,132,252,0.6)">
+                {{ (tokenStats.antigravityBrain?.outputTokens || 0).toLocaleString() }}
+              </div>
+              <div class="text-[11px] text-purple-300/80 font-telemetry flex items-center justify-between pt-1 border-t border-[#1a2336]">
+                <span>生成 Token 占比:</span>
+                <span class="font-bold">{{ tokenStats.antigravityBrain?.totalTokens ? ((tokenStats.antigravityBrain.outputTokens / tokenStats.antigravityBrain.totalTokens) * 100).toFixed(2) : 0 }}%</span>
+              </div>
+            </div>
+
+            <!-- 5. Turns & Est Cost -->
+            <div class="bg-[#05070d] rounded-lg p-3.5 border border-[#1e293b] space-y-1 relative">
+              <div class="mil-label text-emerald-400">EXEC TURNS 物理步数</div>
+              <div class="text-2xl font-bold font-telemetry glow-green mt-1">
+                {{ tokenStats.antigravityBrain?.steps || 0 }} <span class="text-xs font-normal">步</span>
+              </div>
+              <div class="text-[11px] text-emerald-300/80 font-telemetry flex items-center justify-between pt-1 border-t border-[#1a2336]">
+                <span>预估计费:</span>
+                <span class="font-bold">¥{{ Number(tokenStats.antigravityBrain?.costCny || 0).toFixed(4) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Explanation Banner: Why 3.7M vs 0.24M -->
+          <div class="mt-4 p-3.5 rounded-lg bg-[#0a0f1d] border border-[#232e48] relative z-10 text-xs">
+            <div class="flex items-start space-x-2.5">
+              <span class="text-base leading-none">💡</span>
+              <div class="space-y-1.5 flex-1">
+                <div class="font-avionics font-bold text-slate-200 tracking-wide flex items-center space-x-2">
+                  <span>为什么 IDE TOKEN MONITOR 显示 3.7M~4.2M，而 QQ 消息纯文本仅 0.24M？</span>
+                  <button @click="showBrainSteps = !showBrainSteps" class="text-amber-400 hover:text-amber-300 underline font-normal text-[11px] ml-auto">
+                    {{ showBrainSteps ? '收起物理执行流水 ▲' : '查看最近物理交互流水 (' + (tokenStats.antigravityBrain?.recentSteps?.length || 0) + ' 步) ▼' }}
+                  </button>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-slate-400 text-[11px] leading-relaxed pt-1">
+                  <div class="slot-inset p-2.5 rounded border border-[#1b263b]">
+                    <div class="text-amber-300 font-bold mb-1 flex items-center space-x-1">
+                      <span>🤖</span>
+                      <span>IDE Token Monitor 物理用量 ({{ ((tokenStats.antigravityBrain?.totalTokens || 0) / 1000000).toFixed(2) }}M)</span>
+                    </div>
+                    <div>
+                      由 Antigravity Agent 底层直接与 Gemini 大模型通信产生。每轮包含庞大的 System Prompt 人设、MCP 工具集定义（qq_send_message 等）以及多轮会话记忆。其中 <strong class="text-cyan-300">{{ tokenStats.antigravityBrain?.cacheHitPercent || '86+' }}%</strong> 由 Google KV Cache 免重复计算命中。
+                    </div>
+                  </div>
+                  <div class="slot-inset p-2.5 rounded border border-[#1b263b]">
+                    <div class="text-cyan-300 font-bold mb-1 flex items-center space-x-1">
+                      <span>💬</span>
+                      <span>QQ 消息纯文本载荷 ({{ ((tokenStats.summary?.total_tokens || 0) / 1000000).toFixed(2) }}M / {{ (tokenStats.summary?.total_tokens || 0).toLocaleString() }} T)</span>
+                    </div>
+                    <div>
+                      仅对 QQ 群聊收发的 200+ 条原始聊天文字按 1.65 Token/字折算（纯文本载荷）。用于评估用户聊天的文字体量，不包含底层 Agent 运行时的巨量上下文。
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Recent Brain Steps Table (Collapsible) -->
+            <div v-if="showBrainSteps && tokenStats.antigravityBrain?.recentSteps" class="mt-3 pt-3 border-t border-[#1b263b] overflow-x-auto">
+              <div class="text-[11px] font-avionics text-slate-300 font-bold mb-2">最近物理 LLM 交互步数列表 (LATEST TRANSCRIPT STEPS)</div>
+              <table class="w-full text-[11px] font-telemetry">
+                <thead>
+                  <tr class="text-slate-400 border-b border-[#202b3f] text-left">
+                    <th class="py-1 px-2">STEP</th>
+                    <th class="py-1 px-2">时间</th>
+                    <th class="py-1 px-2">物理总 Tokens</th>
+                    <th class="py-1 px-2">KV Cache 命中</th>
+                    <th class="py-1 px-2">新输入</th>
+                    <th class="py-1 px-2">输出</th>
+                    <th class="py-1 px-2">调用工具</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-[#182234]">
+                  <tr v-for="step in tokenStats.antigravityBrain.recentSteps" :key="step.step_index" class="hover:bg-slate-800/40">
+                    <td class="py-1 px-2 text-amber-400 font-bold">#{{ step.step_index }}</td>
+                    <td class="py-1 px-2 text-slate-400">{{ (step.created_at || '').slice(11, 19) }}</td>
+                    <td class="py-1 px-2 text-slate-100 font-bold">{{ step.total_tokens.toLocaleString() }}</td>
+                    <td class="py-1 px-2 text-cyan-400">{{ step.cache_read_tokens.toLocaleString() }}</td>
+                    <td class="py-1 px-2 text-slate-300">{{ step.input_tokens.toLocaleString() }}</td>
+                    <td class="py-1 px-2 text-purple-300">{{ step.output_tokens.toLocaleString() }}</td>
+                    <td class="py-1 px-2 text-slate-400">
+                      <span v-if="step.tool_name" class="px-1.5 py-0.5 rounded text-[10px] bg-slate-800 border border-slate-700 text-amber-300">
+                        {{ step.tool_name }}
+                      </span>
+                      <span v-else class="text-slate-600">--</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
         <!-- Token Usage Telemetry Gauges Grid (8 Inset Gauges) -->
-        <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+        <div class="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3">
           <!-- Total Tokens -->
           <div class="rack-card rounded-lg p-3 border border-[#253147] relative">
-            <div class="mil-label text-slate-500">TOTAL FLUX</div>
-            <div class="text-xl font-bold font-telemetry glow-amber mt-1">{{ tokenStats.summary?.total_tokens || 0 }}</div>
-            <div class="text-[10px] text-slate-500 font-telemetry mt-1">P: {{ tokenStats.summary?.total_prompt_tokens || 0 }} | R: {{ tokenStats.summary?.total_reply_tokens || 0 }}</div>
+            <div class="mil-label text-slate-400">
+              TOTAL TOKENS <span class="text-[9px] font-bold" :class="tokenViewMode === 'physical' ? (tokenStats.antigravityBrain?.totalTokens ? 'text-amber-400' : 'text-amber-500/80') : 'text-cyan-400'">[{{ tokenViewMode === 'physical' ? (tokenStats.antigravityBrain?.totalTokens ? '物理用量' : '待重启生效') : '消息文本' }}]</span>
+            </div>
+            <div class="text-xl font-bold font-telemetry glow-amber mt-1">
+              {{ (tokenViewMode === 'physical' ? (tokenStats.antigravityBrain?.totalTokens || tokenStats.summary?.total_tokens || 0) : (tokenStats.summary?.total_tokens || 0)).toLocaleString() }}
+            </div>
+            <div class="text-[10px] text-slate-400 font-telemetry mt-1">
+              <span v-if="tokenViewMode === 'physical' && tokenStats.antigravityBrain?.totalTokens">
+                入: {{ (tokenStats.antigravityBrain?.inputTokens || 0).toLocaleString() }} | 出: {{ (tokenStats.antigravityBrain?.outputTokens || 0).toLocaleString() }}
+              </span>
+              <span v-else>
+                入: {{ (tokenStats.summary?.total_prompt_tokens || 0).toLocaleString() }} | 出: {{ (tokenStats.summary?.total_reply_tokens || 0).toLocaleString() }}
+              </span>
+            </div>
           </div>
 
           <!-- Reasoning Tokens -->
           <div class="rack-card rounded-lg p-3 border border-[#253147] relative">
             <div class="mil-label text-purple-400">REASONING</div>
-            <div class="text-xl font-bold font-telemetry text-purple-300 mt-1" style="text-shadow: 0 0 8px rgba(192,132,252,0.6)">{{ tokenStats.summary?.total_reasoning_tokens || 0 }}</div>
-            <div class="text-[10px] text-slate-500 font-telemetry mt-1">
+            <div class="text-xl font-bold font-telemetry text-purple-300 mt-1" style="text-shadow: 0 0 8px rgba(192,132,252,0.6)">{{ (tokenStats.summary?.total_reasoning_tokens || 0).toLocaleString() }}</div>
+            <div class="text-[10px] text-slate-400 font-telemetry mt-1">
               占比: {{ tokenStats.summary?.total_reply_tokens ? ((tokenStats.summary.total_reasoning_tokens || 0) / tokenStats.summary.total_reply_tokens * 100).toFixed(1) : 0 }}%
             </div>
           </div>
 
           <!-- Total Turns -->
           <div class="rack-card rounded-lg p-3 border border-[#253147] relative">
-            <div class="mil-label text-cyan-400">CARRIER TURNS</div>
-            <div class="text-xl font-bold font-telemetry glow-cyan mt-1">{{ tokenStats.summary?.total_turns || 0 }}</div>
-            <div class="text-[10px] text-slate-500 font-telemetry mt-1">有效交互轮数</div>
+            <div class="mil-label text-cyan-400">TURNS 轮数</div>
+            <div class="text-xl font-bold font-telemetry glow-cyan mt-1">
+              {{ (tokenViewMode === 'physical' ? (tokenStats.antigravityBrain?.steps || tokenStats.summary?.total_turns || 0) : (tokenStats.summary?.total_turns || 0)).toLocaleString() }}
+            </div>
+            <div class="text-[10px] text-slate-400 font-telemetry mt-1">
+              {{ tokenViewMode === 'physical' ? '物理执行步数' : '有效交互轮数' }}
+            </div>
           </div>
 
           <!-- Throughput Speed -->
           <div class="rack-card rounded-lg p-3 border border-[#253147] relative">
-            <div class="mil-label text-cyan-400">SPEED (TOK/S)</div>
-            <div class="text-xl font-bold font-telemetry glow-cyan mt-1">{{ tokenStats.summary?.avg_throughput_tps || '0.0' }}</div>
-            <div class="text-[10px] text-slate-500 font-telemetry mt-1">平均吐字速率</div>
+            <div class="mil-label text-cyan-400">AVG SPEED</div>
+            <div class="text-xl font-bold font-telemetry glow-cyan mt-1">{{ tokenStats.summary?.avg_throughput_tps || '0.0' }} <span class="text-xs font-normal">t/s</span></div>
+            <div class="text-[10px] text-slate-400 font-telemetry mt-1">平均吐字速率</div>
           </div>
 
           <!-- Estimated Cost CNY -->
           <div class="rack-card rounded-lg p-3 border border-[#253147] relative">
-            <div class="mil-label text-amber-400">COST (CNY)</div>
-            <div class="text-xl font-bold font-telemetry glow-amber mt-1">¥{{ tokenStats.summary?.total_cost_cny !== undefined ? Number(tokenStats.summary.total_cost_cny).toFixed(4) : '0.0000' }}</div>
-            <div class="text-[10px] text-slate-500 font-telemetry mt-1">${{ tokenStats.summary?.total_cost_usd !== undefined ? Number(tokenStats.summary.total_cost_usd).toFixed(4) : '0.0000' }}</div>
+            <div class="mil-label text-amber-400">EST. COST</div>
+            <div class="text-xl font-bold font-telemetry glow-amber mt-1">
+              ¥{{ tokenViewMode === 'physical' ? Number(tokenStats.antigravityBrain?.costCny || tokenStats.summary?.total_cost_cny || 0).toFixed(4) : (tokenStats.summary?.total_cost_cny !== undefined ? Number(tokenStats.summary.total_cost_cny).toFixed(4) : '0.0000') }}
+            </div>
+            <div class="text-[10px] text-slate-400 font-telemetry mt-1">
+              ${{ tokenViewMode === 'physical' ? Number(tokenStats.antigravityBrain?.costUsd || tokenStats.summary?.total_cost_usd || 0).toFixed(4) : (tokenStats.summary?.total_cost_usd !== undefined ? Number(tokenStats.summary.total_cost_usd).toFixed(4) : '0.0000') }}
+            </div>
           </div>
 
           <!-- Total Chars -->
           <div class="rack-card rounded-lg p-3 border border-[#253147] relative">
             <div class="mil-label text-emerald-400">TOTAL CHARS</div>
-            <div class="text-xl font-bold font-telemetry glow-green mt-1">{{ (tokenStats.summary?.total_prompt_chars || 0) + (tokenStats.summary?.total_reply_chars || 0) }}</div>
-            <div class="text-[10px] text-slate-500 font-telemetry mt-1">P: {{ tokenStats.summary?.total_prompt_chars || 0 }} | R: {{ tokenStats.summary?.total_reply_chars || 0 }}</div>
+            <div class="text-xl font-bold font-telemetry glow-green mt-1">{{ ((tokenStats.summary?.total_prompt_chars || 0) + (tokenStats.summary?.total_reply_chars || 0)).toLocaleString() }}</div>
+            <div class="text-[10px] text-slate-400 font-telemetry mt-1">入: {{ (tokenStats.summary?.total_prompt_chars || 0).toLocaleString() }} | 出: {{ (tokenStats.summary?.total_reply_chars || 0).toLocaleString() }}</div>
           </div>
 
           <!-- Cache Hit Rate -->
           <div class="rack-card rounded-lg p-3 border border-[#253147] relative">
-            <div class="mil-label text-cyan-400">KV CACHE HIT</div>
+            <div class="mil-label text-cyan-400">CACHE HIT</div>
             <div class="text-xl font-bold font-telemetry glow-cyan mt-1">
-              {{ tokenStats.summary?.avg_cache_hit_percent !== undefined ? tokenStats.summary?.avg_cache_hit_percent : ((tokenStats.summary?.avg_cache_hit_rate || 0) * (tokenStats.summary?.avg_cache_hit_rate <= 1 ? 100 : 1)).toFixed(1) }}%
+              {{ tokenViewMode === 'physical' ? (tokenStats.antigravityBrain?.cacheHitPercent || '0.0') : (tokenStats.summary?.avg_cache_hit_percent !== undefined ? tokenStats.summary?.avg_cache_hit_percent : ((tokenStats.summary?.avg_cache_hit_rate || 0) * (tokenStats.summary?.avg_cache_hit_rate <= 1 ? 100 : 1)).toFixed(1)) }}%
             </div>
-            <div class="text-[10px] text-slate-500 font-telemetry mt-1">上下文复用率</div>
+            <div class="text-[10px] text-slate-400 font-telemetry mt-1">上下文复用率</div>
           </div>
 
           <!-- Cache Saved Tokens -->
           <div class="rack-card rounded-lg p-3 border border-[#253147] relative">
             <div class="mil-label text-emerald-400">SAVED TOKENS</div>
             <div class="text-xl font-bold font-telemetry glow-green mt-1">
-              {{ tokenStats.summary?.total_cached_saved || tokenStats.summary?.total_cached_tokens || 0 }}
+              {{ (tokenViewMode === 'physical' ? (tokenStats.antigravityBrain?.cachedTokens || tokenStats.summary?.total_cached_saved || 0) : (tokenStats.summary?.total_cached_saved || tokenStats.summary?.total_cached_tokens || 0)).toLocaleString() }}
             </div>
-            <div class="text-[10px] text-slate-500 font-telemetry mt-1">免重复计算</div>
+            <div class="text-[10px] text-slate-400 font-telemetry mt-1">免重复计算</div>
           </div>
         </div>
 
         <!-- Charts Grid (Telemetry Trends) -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <!-- Line Chart: Daily Token Trend -->
+          <!-- Bar Chart: Daily Token Trend -->
           <div class="lg:col-span-2 rack-card rounded-lg p-5 border border-[#253147]">
             <div class="screw screw-tl"></div>
             <div class="screw screw-tr"></div>
             <div class="flex items-center justify-between pb-3 border-b border-[#232d42]">
               <span class="text-xs font-avionics font-bold text-slate-200 tracking-wider flex items-center space-x-1.5">
-                <span>📈</span>
-                <span>每日 TOKEN 消耗走势 (DAILY FLUX TELEMETRY)</span>
+                <span>📊</span>
+                <span>每日 TOKEN 消耗分布 (DAILY FLUX TELEMETRY)</span>
               </span>
-              <span class="mil-label text-slate-400">UNIT: TOKENS</span>
+              <span class="mil-label text-cyan-400">BAR // 柱状双色对比</span>
             </div>
             <div class="h-64 mt-3">
               <canvas id="tokenTrendChart"></canvas>
@@ -1191,53 +1365,97 @@
 
         <!-- Recent Token Ledger Table -->
         <div class="rack-card rounded-lg border border-[#253147] overflow-hidden shadow-2xl">
-          <div class="p-4 border-b border-[#232d42] flex items-center justify-between bg-[#0e1420]">
+          <div class="p-4 border-b border-[#232d42] flex flex-wrap items-center justify-between gap-3 bg-[#0e1420]">
             <div class="flex items-center space-x-2">
               <span class="mil-label border-[#3b4d6e] text-cyan-400">LEDGER</span>
               <h3 class="text-xs font-avionics font-bold text-slate-200 tracking-wider">最近交互详细流水账本 (RECENT INTERACTION LOGS)</h3>
             </div>
-            <span class="mil-label text-slate-400">SHOWING RECENT 50 RECORDS</span>
+
+            <!-- Toolbar: Filter by channel, Search, Purge test -->
+            <div class="flex flex-wrap items-center gap-2 font-telemetry text-xs">
+              <!-- Channel Filter -->
+              <select v-model="tokenFilterChannel" class="slot-inset border border-[#2b3952] rounded px-2.5 py-1 text-xs text-slate-200 focus:outline-none">
+                <option value="">ALL CHANNELS // 全部信道</option>
+                <option v-for="g in groups" :key="g.group_id" :value="'group:' + g.group_id">
+                  {{ g.group_name || ('信道 ' + g.group_id) }}
+                </option>
+              </select>
+
+              <!-- Hide Test Data Toggle -->
+              <button @click="hideTestTokenLogs = !hideTestTokenLogs"
+                      class="px-2.5 py-1 rounded border text-xs transition"
+                      :class="hideTestTokenLogs ? 'bg-cyan-950/40 border-cyan-500/40 text-cyan-300' : 'bg-slate-800 border-slate-700 text-slate-400'">
+                {{ hideTestTokenLogs ? '✓ 仅真实会话' : '显示测试数据' }}
+              </button>
+
+              <!-- Purge Test Records -->
+              <button @click="cleanTestTokenData" class="btn-tactile px-2.5 py-1 rounded text-xs text-amber-300 flex items-center space-x-1">
+                <span>🧹</span>
+                <span>清理测试日志</span>
+              </button>
+
+              <span class="mil-label text-slate-400">{{ filteredTokenLogs.length }} RECORDS</span>
+            </div>
           </div>
 
           <div class="overflow-x-auto">
             <table class="w-full text-left text-xs font-telemetry">
-              <thead class="bg-[#080b12] text-slate-400 uppercase border-b border-[#232d42] text-[10px]">
+              <thead class="bg-[#080b12] text-slate-400 uppercase border-b border-[#232d42] text-[10px] tracking-wider">
                 <tr>
                   <th class="p-3 pl-4">TIMESTAMP</th>
                   <th class="p-3">TARGET CHANNEL</th>
                   <th class="p-3">PERSONA</th>
-                  <th class="p-3">TOTAL FLUX</th>
-                  <th class="p-3">PROMPT / REPLY</th>
+                  <th class="p-3">TOTAL TOKENS</th>
+                  <th class="p-3">INPUT / OUTPUT</th>
                   <th class="p-3">REASONING</th>
-                  <th class="p-3">SPEED (TOK/S)</th>
+                  <th class="p-3">SPEED</th>
                   <th class="p-3">CACHE HIT</th>
-                  <th class="p-3">EST. COST (CNY)</th>
+                  <th class="p-3">EST. COST</th>
                 </tr>
               </thead>
-              <tbody class="divide-y divide-[#1a2233] text-slate-300">
-                <tr v-for="log in tokenLogs" :key="log.id" class="hover:bg-[#131b29] transition">
-                  <td class="p-3 pl-4 text-slate-500 whitespace-nowrap">{{ log.created_at }}</td>
-                  <td class="p-3 text-cyan-300 font-bold whitespace-nowrap">{{ log.session_key }}</td>
+              <tbody class="divide-y divide-[#182236] text-slate-300">
+                <tr v-for="log in filteredTokenLogs" :key="log.id" class="odd:bg-[#090d16] even:bg-[#0c111c] hover:bg-[#151f30] transition">
+                  <td class="p-3 pl-4 text-slate-400 whitespace-nowrap">{{ log.created_at }}</td>
+                  <td class="p-3 whitespace-nowrap">
+                    <div class="flex items-center space-x-1.5">
+                      <span class="font-bold text-slate-100">{{ getChannelName(log.session_key) }}</span>
+                      <span class="mil-label text-cyan-400/80 border-cyan-700/40 text-[9px]">CH-{{ log.session_key ? log.session_key.replace('group:', '') : '-' }}</span>
+                    </div>
+                  </td>
                   <td class="p-3">
-                    <span class="mil-label text-amber-300 border-amber-600/40 bg-amber-950/30">{{ log.persona }}</span>
+                    <span class="mil-label text-amber-300 border-amber-600/40 bg-amber-950/30 font-medium">
+                      {{ log.persona === 'tomoko' ? '🎮 智子' : (log.persona === 'dragon_girl' ? '🐉 白龙娘' : (log.persona === 'little_whale' ? '🐋 小鲸鱼' : (log.persona || '智子'))) }}
+                    </span>
                   </td>
-                  <td class="p-3 font-bold text-amber-400">{{ log.total_tokens }} T</td>
-                  <td class="p-3 text-[11px] text-slate-400">{{ log.estimated_prompt_tokens }} / {{ log.estimated_reply_tokens }}</td>
-                  <td class="p-3 text-purple-300 font-medium">
-                    {{ log.reasoning_tokens ? log.reasoning_tokens + ' T' : '-' }}
+                  <td class="p-3 font-bold text-amber-400 whitespace-nowrap">
+                    {{ (log.total_tokens || 0).toLocaleString() }} <span class="text-[10px] font-normal text-amber-500/80">tok</span>
                   </td>
-                  <td class="p-3 text-cyan-300">
-                    {{ log.throughput_tps ? log.throughput_tps + ' t/s' : (log.duration_ms ? ((log.estimated_reply_tokens / (log.duration_ms / 1000)).toFixed(1) + ' t/s') : '-') }}
+                  <td class="p-3 text-[11px] whitespace-nowrap">
+                    <span class="text-slate-400">{{ (log.estimated_prompt_tokens || 0).toLocaleString() }} in</span>
+                    <span class="text-slate-600 mx-1">/</span>
+                    <span class="text-amber-300/90 font-medium">{{ (log.estimated_reply_tokens || 0).toLocaleString() }} out</span>
                   </td>
-                  <td class="p-3 text-cyan-400">
+                  <td class="p-3 whitespace-nowrap">
+                    <span v-if="log.reasoning_tokens" class="text-purple-300 font-medium">
+                      {{ log.reasoning_tokens.toLocaleString() }} <span class="text-[10px] text-purple-400/70">tok</span>
+                    </span>
+                    <span v-else class="text-slate-600">-</span>
+                  </td>
+                  <td class="p-3 text-cyan-300 whitespace-nowrap">
+                    <span v-if="log.throughput_tps" class="font-medium">{{ log.throughput_tps }} tok/s</span>
+                    <span v-else-if="log.duration_ms && log.estimated_reply_tokens" class="font-medium">{{ (log.estimated_reply_tokens / (log.duration_ms / 1000)).toFixed(1) }} tok/s</span>
+                    <span v-else class="text-slate-600">-</span>
+                  </td>
+                  <td class="p-3 whitespace-nowrap font-medium"
+                      :class="((log.cache_hit_rate || 0) * (log.cache_hit_rate <= 1 ? 100 : 1)) > 80 ? 'text-emerald-400' : (((log.cache_hit_rate || 0) * (log.cache_hit_rate <= 1 ? 100 : 1)) > 40 ? 'text-cyan-300' : 'text-slate-400')">
                     {{ ((log.cache_hit_rate || 0) * (log.cache_hit_rate <= 1 ? 100 : 1)).toFixed(1) }}%
                   </td>
-                  <td class="p-3 font-bold text-amber-400">
+                  <td class="p-3 font-bold text-amber-400 whitespace-nowrap">
                     {{ log.cost_cny !== undefined && log.cost_cny !== null ? '¥' + Number(log.cost_cny).toFixed(4) : '-' }}
                   </td>
                 </tr>
-                <tr v-if="!tokenLogs || tokenLogs.length === 0">
-                  <td colspan="9" class="p-6 text-center text-slate-500 text-xs">
+                <tr v-if="!filteredTokenLogs || filteredTokenLogs.length === 0">
+                  <td colspan="9" class="p-8 text-center text-slate-500 text-xs">
                     暂无流水记录，群聊或对讲机发生对话时将实时记录...
                   </td>
                 </tr>
@@ -1247,31 +1465,232 @@
         </div>
       </div>
 
-      <!-- 6. 主控室诊断机柜 (Avionics Mainframe Diagnostics) -->
+      <!-- 6. 运维与设置 -->
       <div v-if="currentTab === 'ops'" class="max-w-7xl mx-auto space-y-6">
         <div class="flex items-center justify-between">
           <div>
-            <div class="flex items-center space-x-2">
-              <span class="mil-label border-[#3b4d6e] text-emerald-400 bg-emerald-950/40">AVIONICS 06 // DIAG</span>
-              <h2 class="text-xl font-avionics font-bold text-white flex items-center space-x-2">
-                <span>🎛️</span>
-                <span>主控室诊断机柜与通信状态 (Mainframe Diagnostics)</span>
-              </h2>
-            </div>
-            <p class="text-xs text-slate-400 mt-1 font-telemetry">
-              SNOWLUMA 载波链路 • 守护进程性能核心 • 各信道切片诊断 • 实时 CRT 控制台日志
-            </p>
+            <h2 class="text-xl font-bold text-white flex items-center space-x-2">
+              <span>⚙️</span>
+              <span>系统设置与运维诊断</span>
+            </h2>
           </div>
           <div class="flex items-center space-x-2 font-avionics">
             <button @click="cleanImageCache" class="btn-tactile px-3.5 py-1.5 rounded text-slate-300 text-xs tracking-wider">
-              🗑️ PURGE IMAGES
+              🗑️ 清理图片缓存
             </button>
             <button @click="reloadDaemonConfig" class="btn-tactile-cyan px-3.5 py-1.5 rounded text-xs tracking-wider">
-              🔄 RELOAD DAEMON
+              🔄 重载守护进程
             </button>
             <button @click="restartDaemon" class="btn-tactile-red px-3.5 py-1.5 rounded text-xs tracking-wider">
-              ⚡ REBOOT DAEMON
+              ⚡ 重启守护进程
             </button>
+          </div>
+        </div>
+
+        <!-- 系统配置管理面板 (Chat Behavior & System Settings) -->
+        <div class="rack-card rounded-lg p-5 border border-[#253147] space-y-5 relative shadow-xl">
+          <div class="screw screw-tl"></div>
+          <div class="screw screw-tr"></div>
+          <div class="flex flex-wrap items-center justify-between pb-3 border-b border-[#232d42] gap-3">
+            <div>
+              <h3 class="text-sm font-bold text-white flex items-center space-x-2">
+                <span>🎚️</span>
+                <span>聊天与 AI 交互参数配置</span>
+              </h3>
+            </div>
+            <div class="flex items-center space-x-2.5">
+              <button @click="resetConfigDefaults" class="btn-tactile px-3 py-1.5 rounded text-xs text-slate-300 hover:text-white flex items-center space-x-1" title="恢复系统推荐初始默认值">
+                <span>↩️</span>
+                <span>恢复默认</span>
+              </button>
+              <button @click="saveSystemConfig" :disabled="isSavingConfig" class="btn-tactile-amber px-4 py-1.5 rounded text-xs text-white font-bold flex items-center space-x-1.5 shadow-md" :class="isSavingConfig ? 'opacity-50 cursor-not-allowed' : ''">
+                <span>💾</span>
+                <span>{{ isSavingConfig ? '正在保存...' : '保存并生效' }}</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 3-Column Config Grid -->
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+            <!-- Group 1: 探头与触发策略 -->
+            <div class="slot-inset rounded-lg p-4 border border-[#1e293b] space-y-3.5">
+              <div class="flex items-center space-x-2 text-xs font-bold text-amber-400 pb-2 border-b border-[#232d42]">
+                <span>🎯</span>
+                <span>探头与触发策略</span>
+              </div>
+
+              <div class="space-y-1">
+                <label class="text-xs text-slate-300 flex justify-between">
+                  <span>吃瓜探头触发阈值</span>
+                  <span class="text-amber-400 font-telemetry">{{ sysConfig.chatBehavior.ambientTriggerThreshold }} 条</span>
+                </label>
+                <input v-model.number="sysConfig.chatBehavior.ambientTriggerThreshold" type="number" min="1" max="100" class="w-full slot-inset border border-[#2b3952] rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-telemetry">
+                <p class="text-[10px] text-slate-500">群内累积非针对性消息达到此条数后评估是否吃瓜。</p>
+              </div>
+
+              <div class="space-y-1">
+                <label class="text-xs text-slate-300 flex justify-between">
+                  <span>吃瓜探头触发概率</span>
+                  <span class="text-amber-400 font-telemetry">{{ (sysConfig.chatBehavior.ambientTriggerProbability * 100).toFixed(0) }}%</span>
+                </label>
+                <div class="flex items-center space-x-2">
+                  <input v-model.number="sysConfig.chatBehavior.ambientTriggerProbability" type="range" min="0" max="1" step="0.05" class="flex-1 accent-amber-500">
+                  <span class="text-xs font-telemetry text-slate-400 w-12 text-right">{{ sysConfig.chatBehavior.ambientTriggerProbability }}</span>
+                </div>
+                <p class="text-[10px] text-slate-500">达到阈值后路过搭话或吐槽的抽样概率。</p>
+              </div>
+
+              <div class="space-y-1">
+                <label class="text-xs text-slate-300 flex justify-between">
+                  <span>兴趣词搭话冷却时间</span>
+                  <span class="text-amber-400 font-telemetry">{{ sysConfig.chatBehavior.interestCooldownSeconds }} 秒</span>
+                </label>
+                <input v-model.number="sysConfig.chatBehavior.interestCooldownSeconds" type="number" min="5" max="3600" class="w-full slot-inset border border-[#2b3952] rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-telemetry">
+                <p class="text-[10px] text-slate-500">命中人设兴趣关键词后，两次主动插嘴的最短间隔。</p>
+              </div>
+
+              <div class="space-y-1">
+                <label class="text-xs text-slate-300 flex justify-between">
+                  <span>连续会话保持窗口</span>
+                  <span class="text-amber-400 font-telemetry">{{ sysConfig.chatBehavior.activeWindowSeconds }} 秒</span>
+                </label>
+                <input v-model.number="sysConfig.chatBehavior.activeWindowSeconds" type="number" min="10" max="600" class="w-full slot-inset border border-[#2b3952] rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500 font-telemetry">
+                <p class="text-[10px] text-slate-500">此期间内同一发言人可免 @ 持续连贯闲聊。</p>
+              </div>
+            </div>
+
+            <!-- Group 2: 上下文与记忆规模 -->
+            <div class="slot-inset rounded-lg p-4 border border-[#1e293b] space-y-3.5">
+              <div class="flex items-center space-x-2 text-xs font-bold text-cyan-400 pb-2 border-b border-[#232d42]">
+                <span>📦</span>
+                <span>上下文与记忆规模</span>
+              </div>
+
+              <div class="space-y-1">
+                <label class="text-xs text-slate-300 flex justify-between">
+                  <span>短句碎片聚合防抖缓冲</span>
+                  <span class="text-cyan-400 font-telemetry">{{ sysConfig.chatBehavior.silentBufferSeconds }} 秒</span>
+                </label>
+                <input v-model.number="sysConfig.chatBehavior.silentBufferSeconds" type="number" min="1" max="30" class="w-full slot-inset border border-[#2b3952] rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500 font-telemetry">
+                <p class="text-[10px] text-slate-500">合并群友连发碎句与多图的等待时间，节省 Token。</p>
+              </div>
+
+              <div class="space-y-1">
+                <label class="text-xs text-slate-300 flex justify-between">
+                  <span>附带滚动上下文历史</span>
+                  <span class="text-cyan-400 font-telemetry">{{ sysConfig.chatBehavior.recentContextCount }} 条</span>
+                </label>
+                <input v-model.number="sysConfig.chatBehavior.recentContextCount" type="number" min="3" max="50" class="w-full slot-inset border border-[#2b3952] rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500 font-telemetry">
+                <p class="text-[10px] text-slate-500">每次对话注入到提示词中的最近群聊真实背景历史条数。</p>
+              </div>
+
+              <div class="space-y-1">
+                <label class="text-xs text-slate-300 flex justify-between">
+                  <span>注入流行网络黑话条数</span>
+                  <span class="text-cyan-400 font-telemetry">{{ sysConfig.chatBehavior.topSlangsCount }} 条</span>
+                </label>
+                <input v-model.number="sysConfig.chatBehavior.topSlangsCount" type="number" min="0" max="20" class="w-full slot-inset border border-[#2b3952] rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500 font-telemetry">
+                <p class="text-[10px] text-slate-500">自动从黑话库注入使用频次最高的词汇供 AI 参考。</p>
+              </div>
+
+              <div class="space-y-1">
+                <label class="text-xs text-slate-300 flex justify-between">
+                  <span>本地图片缓存保留上限</span>
+                  <span class="text-cyan-400 font-telemetry">{{ sysConfig.chatBehavior.maxImages }} 张</span>
+                </label>
+                <input v-model.number="sysConfig.chatBehavior.maxImages" type="number" min="5" max="100" class="w-full slot-inset border border-[#2b3952] rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-500 font-telemetry">
+                <p class="text-[10px] text-slate-500">超出上限后自动按 FIFO 淘汰最老图片，防止硬盘占用。</p>
+              </div>
+            </div>
+
+            <!-- Group 3: 巡查与生命周期 -->
+            <div class="slot-inset rounded-lg p-4 border border-[#1e293b] space-y-3.5">
+              <div class="flex items-center space-x-2 text-xs font-bold text-emerald-400 pb-2 border-b border-[#232d42]">
+                <span>⏱️</span>
+                <span>巡查与生命周期</span>
+              </div>
+
+              <div class="space-y-1">
+                <label class="text-xs text-slate-300 flex justify-between">
+                  <span>随机主动看群最短间隔</span>
+                  <span class="text-emerald-400 font-telemetry">{{ sysConfig.chatBehavior.patrolMinMinutes }} 分钟</span>
+                </label>
+                <input v-model.number="sysConfig.chatBehavior.patrolMinMinutes" type="number" min="1" max="120" class="w-full slot-inset border border-[#2b3952] rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-telemetry">
+                <p class="text-[10px] text-slate-500">主动随机扫群的最小等待时间。</p>
+              </div>
+
+              <div class="space-y-1">
+                <label class="text-xs text-slate-300 flex justify-between">
+                  <span>随机主动看群最长间隔</span>
+                  <span class="text-emerald-400 font-telemetry">{{ sysConfig.chatBehavior.patrolMaxMinutes }} 分钟</span>
+                </label>
+                <input v-model.number="sysConfig.chatBehavior.patrolMaxMinutes" type="number" min="1" max="240" class="w-full slot-inset border border-[#2b3952] rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-telemetry">
+                <p class="text-[10px] text-slate-500">主动随机扫群的最大等待时间。</p>
+              </div>
+
+              <div class="space-y-1">
+                <label class="text-xs text-slate-300 flex justify-between">
+                  <span>单会话切片最大轮次</span>
+                  <span class="text-emerald-400 font-telemetry">{{ sysConfig.chatBehavior.maxTurns }} 轮</span>
+                </label>
+                <input v-model.number="sysConfig.chatBehavior.maxTurns" type="number" min="5" max="200" class="w-full slot-inset border border-[#2b3952] rounded px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-telemetry">
+                <p class="text-[10px] text-slate-500">超过此轮次后自动切片重置会话，防止模型幻觉与上下文过载。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 模型阶梯单价与费率配置面板 (Model Pricing Configuration) -->
+        <div class="rack-card rounded-lg p-5 border border-[#253147] space-y-5 relative shadow-xl">
+          <div class="screw screw-tl"></div>
+          <div class="screw screw-tr"></div>
+          <div class="flex flex-wrap items-center justify-between pb-3 border-b border-[#232d42] gap-3">
+            <div>
+              <h3 class="text-sm font-bold text-white flex items-center space-x-2">
+                <span>🏷️</span>
+                <span>大模型阶梯费率与汇率配置 (外置 pricing.json)</span>
+              </h3>
+              <p class="text-xs text-slate-400 mt-1">支持按模型配置每百万 Tokens 输入/缓存命中/输出价格 (USD)，保存后热生效。</p>
+            </div>
+            <div class="flex items-center space-x-2.5">
+              <button @click="loadSystemPricing" class="btn-tactile px-3 py-1.5 rounded text-xs text-slate-300 hover:text-white flex items-center space-x-1" title="重新从磁盘读取">
+                <span>🔄</span>
+                <span>刷新费率</span>
+              </button>
+              <button @click="saveSystemPricing" :disabled="isSavingPricing" class="btn-tactile-cyan px-4 py-1.5 rounded text-xs text-white font-bold flex items-center space-x-1.5 shadow-md" :class="isSavingPricing ? 'opacity-50 cursor-not-allowed' : ''">
+                <span>💾</span>
+                <span>{{ isSavingPricing ? '正在保存...' : '保存费率配置' }}</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="flex items-center space-x-4 p-3 slot-inset rounded border border-[#1e293b]">
+            <span class="text-xs text-slate-300 font-bold">USD 对 CNY 结算汇率:</span>
+            <input v-model.number="sysPricing.exchangeRateUsdToCny" type="number" step="0.01" min="1" max="50" class="w-28 slot-inset border border-[#2b3952] rounded px-2.5 py-1 text-xs text-amber-400 font-telemetry">
+            <span class="text-xs text-slate-500">当前参考: 1 USD = {{ sysPricing.exchangeRateUsdToCny }} CNY</span>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs font-telemetry">
+              <thead>
+                <tr class="text-slate-400 border-b border-[#232d42] bg-[#0c1220]/60">
+                  <th class="py-2.5 px-3">模型标识 (Model ID)</th>
+                  <th class="py-2.5 px-3">显示名称</th>
+                  <th class="py-2.5 px-3">输入单价 ($/M)</th>
+                  <th class="py-2.5 px-3">缓存输入单价 ($/M)</th>
+                  <th class="py-2.5 px-3">输出单价 ($/M)</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-[#1b253b]">
+                <tr v-for="(cfg, mid) in sysPricing.models" :key="mid" class="hover:bg-slate-800/30">
+                  <td class="py-2 px-3 text-cyan-400 font-mono">{{ mid }}</td>
+                  <td class="py-2 px-3"><input v-model="cfg.name" type="text" class="w-36 slot-inset border border-[#2b3952] rounded px-2 py-1 text-xs text-white"></td>
+                  <td class="py-2 px-3"><input v-model.number="cfg.inputPerM" type="number" step="0.001" class="w-24 slot-inset border border-[#2b3952] rounded px-2 py-1 text-xs text-amber-300"></td>
+                  <td class="py-2 px-3"><input v-model.number="cfg.cachedInputPerM" type="number" step="0.001" class="w-24 slot-inset border border-[#2b3952] rounded px-2 py-1 text-xs text-emerald-300"></td>
+                  <td class="py-2 px-3"><input v-model.number="cfg.outputPerM" type="number" step="0.001" class="w-24 slot-inset border border-[#2b3952] rounded px-2 py-1 text-xs text-purple-300"></td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
 
@@ -1396,6 +1815,7 @@
         </div>
       </div>
     </main>
+    </div>
 
     <!-- Modal 1: Channel Configuration Hatch (Group Modal) -->
     <div v-if="showGroupModal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
@@ -1599,12 +2019,12 @@
 
         const currentTab = ref('groups');
         const tabs = [
-          { id: 'groups', channel: 'CH-01', name: '信道机架', icon: '📡' },
-          { id: 'persona', channel: 'CH-02', name: '神经矩阵', icon: '🧬' },
-          { id: 'messages', channel: 'CH-03', name: '电传示波', icon: '⚡' },
-          { id: 'vault', channel: 'CH-04', name: '晶体归档', icon: '💎' },
-          { id: 'tokens', channel: 'CH-05', name: '反应堆配额', icon: '☢️' },
-          { id: 'ops', channel: 'CH-06', name: '诊断机柜', icon: '🎛️' }
+          { id: 'groups', name: '群聊管理', icon: '📡' },
+          { id: 'persona', name: '人设管理', icon: '🧬' },
+          { id: 'messages', name: '实时消息', icon: '💬' },
+          { id: 'vault', name: '记忆与档案', icon: '💎' },
+          { id: 'tokens', name: 'Token 用量', icon: '📊' },
+          { id: 'ops', name: '运维与设置', icon: '⚙️' }
         ];
 
         const wsConnected = ref(false);
@@ -1617,6 +2037,31 @@
         const activePersonaDisplayName = ref('智子');
         const selectedEditPersona = ref(null);
         const personaCardContent = ref('');
+
+        // System Configuration State
+        const sysConfig = ref({
+          chatBehavior: {
+            ambientTriggerThreshold: 10,
+            ambientTriggerProbability: 0.1,
+            interestCooldownSeconds: 60,
+            activeWindowSeconds: 120,
+            silentBufferSeconds: 8,
+            recentContextCount: 15,
+            topSlangsCount: 5,
+            maxImages: 15,
+            patrolMinMinutes: 3,
+            patrolMaxMinutes: 8,
+            maxTurns: 30
+          }
+        });
+        const isSavingConfig = ref(false);
+
+        // Pricing Configuration State
+        const sysPricing = ref({
+          exchangeRateUsdToCny: 7.25,
+          models: {}
+        });
+        const isSavingPricing = ref(false);
 
         const characterState = ref({
           location: '海外家中二楼房间',
@@ -1647,9 +2092,9 @@
         // Vault Subtabs
         const vaultSubTab = ref('affinity');
         const vaultTabs = [
-          { id: 'affinity', name: '用户好感度排行' },
-          { id: 'memories', name: '长期记忆切片' },
-          { id: 'slangs', name: '黑话词典' }
+          { id: 'affinity', name: '好感度档案' },
+          { id: 'memory', name: '长期记忆' },
+          { id: 'slangs', name: '网络黑话' }
         ];
         const affinities = ref([]);
         const affinitySearch = ref('');
@@ -1666,6 +2111,11 @@
         const tokenDays = ref(7);
         const tokenStats = ref({ summary: {}, trend: [], byGroup: [], byPersona: [], peakHours: [] });
         const tokenLogs = ref([]);
+        const tokenFilterChannel = ref('');
+        const tokenSearch = ref('');
+        const hideTestTokenLogs = ref(true);
+        const tokenViewMode = ref('physical'); // 'physical' (IDE Token Monitor 对齐) | 'payload' (QQ 纯文本载荷)
+        const showBrainSteps = ref(false);
         const quotaStatus = ref({
           lowestRemainingPercent: 100,
           isThrottled: false,
@@ -1980,9 +2430,32 @@
           });
         }
 
+        function scrollToBottom(force = true) {
+          scrollChatToBottom(force);
+        }
+
         function scrollToBottomManual() {
           scrollChatToBottom(true);
         }
+
+        function parseImages(images) {
+          if (!images) return [];
+          let list = images;
+          if (typeof list === 'string') {
+            try {
+              list = JSON.parse(list);
+            } catch {
+              return list ? [list] : [];
+            }
+          }
+          if (!Array.isArray(list)) return [];
+          return list.map(item => {
+            if (typeof item === 'string') return item;
+            return item?.url || (item?.file ? `/images/${item.file}` : '') || '';
+          }).filter(Boolean);
+        }
+
+        const previewImage = openImagePreview;
 
         function onChatMessageMediaLoad() {
           if (!isUserScrolledUp.value && chatScrollBox.value) {
@@ -2213,6 +2686,60 @@
           }
         }
 
+        const filteredTokenLogs = computed(() => {
+          let list = tokenLogs.value || [];
+          if (hideTestTokenLogs.value) {
+            list = list.filter(l => !String(l.session_key || '').startsWith('test:'));
+          }
+          if (tokenFilterChannel.value) {
+            const target = String(tokenFilterChannel.value).trim();
+            const bare = target.startsWith('group:') ? target.slice(6) : target;
+            list = list.filter(l => {
+              const sk = String(l.session_key || '').trim();
+              const gid = String(l.group_id || '').trim();
+              return sk === target || sk === `group:${target}` || sk === bare || gid === bare;
+            });
+          }
+          if (tokenSearch.value.trim()) {
+            const q = tokenSearch.value.trim().toLowerCase();
+            list = list.filter(l => {
+              return String(l.session_key || '').toLowerCase().includes(q) ||
+                     String(l.persona || '').toLowerCase().includes(q) ||
+                     String(l.created_at || '').toLowerCase().includes(q) ||
+                     getChannelName(l.session_key).toLowerCase().includes(q);
+            });
+          }
+          return list;
+        });
+
+        function getChannelName(sessionKey) {
+          if (!sessionKey) return 'DIRECT';
+          const sk = String(sessionKey);
+          if (sk.startsWith('group:')) {
+            const gid = sk.slice(6);
+            const g = groups.value.find(x => String(x.group_id) === gid);
+            return g ? (g.group_name || `群聊 ${gid}`) : `群聊 ${gid}`;
+          }
+          if (sk.startsWith('private:')) {
+            return `私聊 (${sk.slice(8)})`;
+          }
+          if (sk.startsWith('test:')) {
+            return `测试 (${sk.slice(5)})`;
+          }
+          return sk;
+        }
+
+        async function cleanTestTokenData() {
+          if (!confirm('确定清理测试用例生成的假流水与日志吗？（真实群聊统计不受影响）')) return;
+          const res = await api('/api/tokens/clean-test', { method: 'POST' });
+          if (res?.success) {
+            alert(res.message || '测试流水已清理！');
+            loadTokenStats();
+          } else {
+            alert(res?.error || '清理失败');
+          }
+        }
+
         async function loadTokenStats() {
           loadQuotaStatus();
           const res = await api(`/api/tokens/stats?days=${tokenDays.value}`);
@@ -2220,45 +2747,51 @@
             tokenStats.value = res.data;
             renderTokenCharts(res.data);
           }
-          const logRes = await api('/api/tokens/logs?limit=50');
+          const logRes = await api('/api/tokens/logs?limit=100');
           if (logRes?.data) tokenLogs.value = logRes.data;
+        }
+
+        function setTokenViewMode(mode) {
+          tokenViewMode.value = mode;
+          renderTokenCharts(tokenStats.value);
         }
 
         function renderTokenCharts(data) {
           nextTick(() => {
-            // Trend Line Chart (Cosmic Amber & Cyan Phosphors)
+            const isPhysical = tokenViewMode.value === 'physical';
+            const effectiveTrend = (isPhysical && data.antigravityBrain?.trend?.length)
+              ? data.antigravityBrain.trend
+              : (data.trend || []);
+
+            // Trend Bar Chart (Clean side-by-side comparison, no muddy fills)
             const trendCanvas = document.getElementById('tokenTrendChart');
             if (trendCanvas) {
               if (trendChartInstance) trendChartInstance.destroy();
-              const dates = (data.trend || []).map(t => t.date);
-              const tokens = (data.trend || []).map(t => t.tokens);
-              const cachedTokens = (data.trend || []).map(t => t.cached_tokens || 0);
+              const dates = effectiveTrend.map(t => t.date);
+              const tokens = effectiveTrend.map(t => t.tokens);
+              const cachedTokens = effectiveTrend.map(t => t.cached_tokens || 0);
               trendChartInstance = new Chart(trendCanvas, {
-                type: 'line',
+                type: 'bar',
                 data: {
                   labels: dates.length ? dates : ['无数据'],
                   datasets: [
                     {
-                      label: '每日总消耗 Token (TOTAL FLUX)',
+                      label: isPhysical ? '每日物理总 Token (Physical Total)' : '每日总消耗 Token (Total Tokens)',
                       data: tokens.length ? tokens : [0],
-                      borderColor: '#f59e0b',
-                      backgroundColor: 'rgba(245, 158, 11, 0.18)',
-                      fill: true,
-                      tension: 0.35,
-                      borderWidth: 2,
-                      pointBackgroundColor: '#f59e0b',
-                      pointRadius: 3
+                      backgroundColor: 'rgba(245, 158, 11, 0.85)',
+                      hoverBackgroundColor: '#f59e0b',
+                      borderRadius: 4,
+                      barPercentage: 0.6,
+                      categoryPercentage: 0.7
                     },
                     {
-                      label: 'KV 缓存命中 Token (CACHED FLUX)',
+                      label: isPhysical ? 'KV 缓存复用命中 (Cached Read)' : 'KV 缓存命中 Token (Cached Tokens)',
                       data: cachedTokens.length ? cachedTokens : [0],
-                      borderColor: '#06b6d4',
-                      backgroundColor: 'rgba(6, 182, 212, 0.18)',
-                      fill: true,
-                      tension: 0.35,
-                      borderWidth: 2,
-                      pointBackgroundColor: '#06b6d4',
-                      pointRadius: 3
+                      backgroundColor: 'rgba(6, 182, 212, 0.85)',
+                      hoverBackgroundColor: '#06b6d4',
+                      borderRadius: 4,
+                      barPercentage: 0.6,
+                      categoryPercentage: 0.7
                     }
                   ]
                 },
@@ -2269,12 +2802,32 @@
                     legend: {
                       display: true,
                       position: 'top',
-                      labels: { color: '#94a3b8', font: { family: 'Share Tech Mono', size: 10 } }
+                      labels: {
+                        color: '#94a3b8',
+                        font: { family: 'ui-monospace, Consolas, sans-serif', size: 11 },
+                        boxWidth: 12,
+                        padding: 12
+                      }
+                    },
+                    tooltip: {
+                      callbacks: {
+                        label: (ctx) => ` ${ctx.dataset.label}: ${Number(ctx.raw).toLocaleString()} Tokens`
+                      }
                     }
                   },
                   scales: {
-                    x: { grid: { color: '#161f30' }, ticks: { color: '#64748b', font: { family: 'Share Tech Mono', size: 10 } } },
-                    y: { grid: { color: '#161f30' }, ticks: { color: '#64748b', font: { family: 'Share Tech Mono', size: 10 } } }
+                    x: {
+                      grid: { color: 'rgba(255, 255, 255, 0.04)' },
+                      ticks: { color: '#64748b', font: { family: 'ui-monospace, Consolas, sans-serif', size: 10 } }
+                    },
+                    y: {
+                      grid: { color: 'rgba(255, 255, 255, 0.04)' },
+                      ticks: {
+                        color: '#64748b',
+                        font: { family: 'ui-monospace, Consolas, sans-serif', size: 10 },
+                        callback: (v) => v >= 1000 ? (v / 1000).toFixed(0) + 'k' : v
+                      }
+                    }
                   }
                 }
               });
@@ -2284,7 +2837,8 @@
             const personaCanvas = document.getElementById('tokenPersonaChart');
             if (personaCanvas) {
               if (personaChartInstance) personaChartInstance.destroy();
-              const labels = (data.byPersona || []).map(p => p.persona);
+              const nameMap = { tomoko: '智子 (tomoko)', dragon_girl: '白龙娘', little_whale: '小鲸鱼', haena: 'Haena' };
+              const labels = (data.byPersona || []).map(p => nameMap[p.persona] || p.persona);
               const vals = (data.byPersona || []).map(p => p.tokens);
               personaChartInstance = new Chart(personaCanvas, {
                 type: 'doughnut',
@@ -2300,8 +2854,22 @@
                 options: {
                   responsive: true,
                   maintainAspectRatio: false,
+                  cutout: '70%',
                   plugins: {
-                    legend: { position: 'bottom', labels: { color: '#94a3b8', font: { family: 'Share Tech Mono', size: 10 } } }
+                    legend: {
+                      position: 'bottom',
+                      labels: {
+                        color: '#94a3b8',
+                        font: { family: 'ui-monospace, Consolas, sans-serif', size: 10 },
+                        boxWidth: 10,
+                        padding: 10
+                      }
+                    },
+                    tooltip: {
+                      callbacks: {
+                        label: (ctx) => ` ${ctx.label}: ${Number(ctx.raw).toLocaleString()} Tokens`
+                      }
+                    }
                   }
                 }
               });
@@ -2391,11 +2959,93 @@
           });
         }
 
+        async function loadSystemConfig() {
+          try {
+            const data = await api('/api/system/config');
+            if (data.success && data.data?.chatBehavior) {
+              sysConfig.value.chatBehavior = {
+                ...sysConfig.value.chatBehavior,
+                ...data.data.chatBehavior
+              };
+            }
+          } catch (err) {
+            console.error('加载系统配置失败:', err);
+          }
+        }
+
+        async function saveSystemConfig() {
+          isSavingConfig.value = true;
+          try {
+            const res = await api('/api/system/config', {
+              method: 'POST',
+              body: JSON.stringify({ chatBehavior: sysConfig.value.chatBehavior })
+            });
+            if (res.success) {
+              alert('系统配置已保存并热重载生效！');
+            } else {
+              alert('保存失败: ' + (res.error || '未知错误'));
+            }
+          } catch (err) {
+            alert('保存异常: ' + err.message);
+          } finally {
+            isSavingConfig.value = false;
+          }
+        }
+
+        function resetConfigDefaults() {
+          sysConfig.value.chatBehavior = {
+            ambientTriggerThreshold: 10,
+            ambientTriggerProbability: 0.1,
+            interestCooldownSeconds: 60,
+            activeWindowSeconds: 120,
+            silentBufferSeconds: 8,
+            recentContextCount: 15,
+            topSlangsCount: 5,
+            maxImages: 15,
+            patrolMinMinutes: 3,
+            patrolMaxMinutes: 8,
+            maxTurns: 30
+          };
+          alert('已重置为系统推荐默认值，请点击「保存并生效」以落盘。');
+        }
+
+        async function loadSystemPricing() {
+          try {
+            const res = await api('/api/system/pricing');
+            if (res.success && res.data) {
+              sysPricing.value = res.data;
+            }
+          } catch (err) {
+            console.error('加载模型费率失败:', err);
+          }
+        }
+
+        async function saveSystemPricing() {
+          isSavingPricing.value = true;
+          try {
+            const res = await api('/api/system/pricing', {
+              method: 'POST',
+              body: JSON.stringify(sysPricing.value)
+            });
+            if (res.success) {
+              alert('模型阶梯费率与汇率配置已成功更新并热生效！');
+            } else {
+              alert('保存失败: ' + (res.error || '未知错误'));
+            }
+          } catch (err) {
+            alert('保存费率异常: ' + err.message);
+          } finally {
+            isSavingPricing.value = false;
+          }
+        }
+
         async function reloadDaemonConfig() {
           await api('/api/system/reload', { method: 'POST' });
           alert('配置与人设已重新加载！');
           loadGroups();
           loadPersonas();
+          loadSystemConfig();
+          loadSystemPricing();
         }
 
         async function restartDaemon() {
@@ -2508,6 +3158,8 @@
           loadQuotaStatus();
           loadSystemStatus();
           loadSystemLogs();
+          loadSystemConfig();
+          loadSystemPricing();
           initWebSocket();
           setInterval(loadSystemStatus, 5000);
           setInterval(() => loadQuotaStatus(false), 30000);
@@ -2528,6 +3180,8 @@
             });
           } else if (val === 'ops') {
             loadSystemStatus();
+            loadSystemConfig();
+            loadSystemPricing();
           } else if (val === 'tokens') {
             loadTokenStats();
           }
@@ -2572,6 +3226,9 @@
           savePersonaCard,
           liveMessages,
           filteredMessages,
+          loadHistoryMessages,
+          parseImages,
+          previewImage,
           socialDecisions,
           messageFilterGroup,
           quickMessageText,
@@ -2581,9 +3238,13 @@
           isUserScrolledUp,
           hasNewMessagesBelow,
           handleChatScroll,
+          scrollToBottom,
           scrollToBottomManual,
           onChatMessageMediaLoad,
           onChatMessageImgError,
+          openEditPersonaCard: selectPersonaForEdit,
+          updateLocationAction: submitRelocate,
+          loadSlangList: loadSlangs,
           showIntercomModal,
           intercomForm,
           openIntercomModal,
@@ -2631,7 +3292,16 @@
           tokenDays,
           tokenStats,
           tokenLogs,
+          tokenFilterChannel,
+          tokenSearch,
+          hideTestTokenLogs,
+          filteredTokenLogs,
+          getChannelName,
+          cleanTestTokenData,
           loadTokenStats,
+          tokenViewMode,
+          showBrainSteps,
+          setTokenViewMode,
           quotaStatus,
           isRefreshingQuota,
           loadQuotaStatus,
@@ -2644,7 +3314,16 @@
           clearLogs,
           reloadDaemonConfig,
           restartDaemon,
-          formatUptime
+          formatUptime,
+          sysConfig,
+          isSavingConfig,
+          loadSystemConfig,
+          saveSystemConfig,
+          resetConfigDefaults,
+          sysPricing,
+          isSavingPricing,
+          loadSystemPricing,
+          saveSystemPricing
         };
       }
     }).mount('#app');

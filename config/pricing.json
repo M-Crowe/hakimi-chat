@@ -1,0 +1,71 @@
+{
+  "exchangeRateUsdToCny": 7.25,
+  "models": {
+    "gemini-2.5-pro": {
+      "name": "Gemini 2.5 Pro",
+      "inputPerM": 1.25,
+      "cachedInputPerM": 0.3125,
+      "outputPerM": 5
+    },
+    "gemini-2.5-flash": {
+      "name": "Gemini 2.5 Flash",
+      "inputPerM": 0.075,
+      "cachedInputPerM": 0.01875,
+      "outputPerM": 0.3
+    },
+    "gemini-1.5-pro": {
+      "name": "Gemini 1.5 Pro",
+      "inputPerM": 1.25,
+      "cachedInputPerM": 0.3125,
+      "outputPerM": 5
+    },
+    "gemini-1.5-flash": {
+      "name": "Gemini 1.5 Flash",
+      "inputPerM": 0.075,
+      "cachedInputPerM": 0.01875,
+      "outputPerM": 0.3
+    },
+    "claude-3.7-sonnet": {
+      "name": "Claude 3.7 Sonnet (Hybrid)",
+      "inputPerM": 3,
+      "cachedInputPerM": 0.3,
+      "outputPerM": 15
+    },
+    "claude-3.5-sonnet": {
+      "name": "Claude 3.5 Sonnet",
+      "inputPerM": 3,
+      "cachedInputPerM": 0.3,
+      "outputPerM": 15
+    },
+    "claude-3.5-haiku": {
+      "name": "Claude 3.5 Haiku",
+      "inputPerM": 0.8,
+      "cachedInputPerM": 0.08,
+      "outputPerM": 4
+    },
+    "deepseek-v3": {
+      "name": "DeepSeek V3",
+      "inputPerM": 0.14,
+      "cachedInputPerM": 0.014,
+      "outputPerM": 0.28
+    },
+    "deepseek-r1": {
+      "name": "DeepSeek R1",
+      "inputPerM": 0.55,
+      "cachedInputPerM": 0.14,
+      "outputPerM": 2.19
+    },
+    "gpt-4o": {
+      "name": "GPT-4o",
+      "inputPerM": 2.5,
+      "cachedInputPerM": 1.25,
+      "outputPerM": 10
+    },
+    "gpt-4o-mini": {
+      "name": "GPT-4o mini",
+      "inputPerM": 0.15,
+      "cachedInputPerM": 0.075,
+      "outputPerM": 0.6
+    }
+  }
+}

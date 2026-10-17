@@ -26,6 +26,7 @@ for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":5120" ^| findstr "LISTENING
     taskkill /F /PID %%a >nul 2>&1
 )
 
+:run_daemon
 echo [*] 正在启动守护进程并连接 SnowLuma 网关...
 echo [*] Web 控制台: http://127.0.0.1:5120
 echo [*] 内部 IPC 网关: 127.0.0.1:34567
@@ -33,4 +34,7 @@ echo [*] 提示: 守护进程启动后，在 Antigravity 聊天窗口发送「�
 echo.
 node src/bridge-daemon.mjs
 
-pause
+echo.
+echo [*] 守护进程已停止。正在准备自动重启 (按 Ctrl+C 可彻底退出)...
+timeout /t 2 /nobreak >nul
+goto run_daemon

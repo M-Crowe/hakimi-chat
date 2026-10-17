@@ -28,7 +28,8 @@ import {
   getRecentTokenLogs,
   estimateTokens,
   recordChatMessage,
-  getRecentChatMessages
+  getRecentChatMessages,
+  cleanTestTokenLogs
 } from "../src/db.mjs";
 
 import {
@@ -100,8 +101,8 @@ const structuredPrompt = "[系统设定与人设卡规范: 你是智子...]\n【
 const structuredReply = "麦茶和单机，还没吃晚餐呢";
 const estPrefix = estimateTokens("[系统设定与人设卡规范: 你是智子...]\n【最近滚动历史】");
 const tokenPrefixRow = recordTokenUsage({
-  sessionKey: "group:587071853",
-  groupId: 587071853,
+  sessionKey: "group:88812345",
+  groupId: 88812345,
   persona: "tomoko",
   promptText: structuredPrompt,
   replyText: structuredReply
@@ -110,7 +111,7 @@ assert.strictEqual(tokenPrefixRow.cachedTokens, estPrefix, "结构化前缀缓�
 assert(tokenPrefixRow.cacheHitRate > 0.5, "长前缀人设历史在总提示词中应占比超过 50%");
 assert.strictEqual(tokenPrefixRow.totalTokens, tokenPrefixRow.cachedTokens + (tokenPrefixRow.newTokens - tokenPrefixRow.replyTokens) + tokenPrefixRow.replyTokens, "总Token数应与新旧分轨吻合");
 
-const stats = getTokenUsageStats({ days: 1, groupId: 587071853 });
+const stats = getTokenUsageStats({ days: 1, groupId: 88812345 });
 assert(stats.summary.total_turns >= 1, "今日应有统计轮次");
 assert(stats.summary.total_tokens >= tokenPrefixRow.totalTokens, "总 Token 应包含刚才记录的交互");
 assert(stats.summary.total_cached_saved !== undefined, "应包含上下文缓存节省量");
@@ -389,6 +390,7 @@ webServer.server.close();
 // 清理测试创建的数据并恢复初始人设
 deleteManagedGroup(77766655);
 deleteManagedGroup(999888777);
+cleanTestTokenLogs();
 mockDaemonApi.switchPersona("tomoko");
 
 console.log("\n🎉 哈基米聊天系统 (Hakimi Chat System) 六大模块全部测试通过，验证圆满成功！");

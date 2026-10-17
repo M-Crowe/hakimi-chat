@@ -3,7 +3,8 @@ import {
   recordTokenUsage, 
   getTokenUsageStats, 
   getRecentTokenLogs, 
-  estimateTokens 
+  estimateTokens,
+  cleanTestTokenLogs 
 } from "../src/db.mjs";
 import { 
   calculateTokenCost, 
@@ -303,5 +304,6 @@ assert(brainJson.data !== undefined);
 console.log("✅ Web API /api/tokens/stats 与 /api/tokens/brain 物理用量集成测试通过！");
 
 await web.stop();
+cleanTestTokenLogs();
 
 console.log("\n🎉 Token 监测系统升级与配额防爆全项深度测试全部通过！");

@@ -19,7 +19,7 @@ try {
 # 2. 检查 SQLite 数据区
 if (-not (Test-Path "data/state.db")) {
     Write-Host "[*] 正在初始化本地 SQLite 数据区..." -ForegroundColor Yellow
-    node test/test-db.mjs
+    node --experimental-sqlite test/test-db.mjs
 } else {
     Write-Host "[✓] 本地 SQLite 数据区就绪" -ForegroundColor Green
 }
@@ -44,4 +44,4 @@ Write-Host "[*] Web 控制台: http://127.0.0.1:5120" -ForegroundColor Cyan
 Write-Host "[*] 内部 IPC 网关: 127.0.0.1:34567" -ForegroundColor Cyan
 Write-Host "[*] 提示: 守护进程启动后，在 Antigravity 聊天窗口发送「一键启动哈基米聊天系统」即可进入伴聊循环。" -ForegroundColor Magenta
 Write-Host ""
-node src/bridge-daemon.mjs
+node --experimental-sqlite src/bridge-daemon.mjs

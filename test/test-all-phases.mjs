@@ -21,7 +21,8 @@ import {
   getSessionState,
   saveSessionState,
   deleteSessionState,
-  cleanStaleInboxMessages
+  cleanStaleInboxMessages,
+  cleanTestTokenLogs
 } from "../src/db.mjs";
 import { getActivePersona, loadPersonaPrompt, PERSONAS } from "../src/personas.mjs";
 import { processOutboundMessage, isDirectedAtAi } from "../src/bridge-daemon.mjs";
@@ -203,5 +204,6 @@ deleteSessionState("test:dive");
 deleteSessionState(testSession);
 // 恢复智子初始身位
 syncCharacterStateForPersona("tomoko");
+cleanTestTokenLogs();
 
 console.log("\n🎉 所有测试全面通过，全阶段架构验证圆满成功！");

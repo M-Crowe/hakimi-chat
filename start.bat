@@ -32,7 +32,7 @@ echo [*] Web 控制台: http://127.0.0.1:5120
 echo [*] 内部 IPC 网关: 127.0.0.1:34567
 echo [*] 提示: 守护进程启动后，在 Antigravity 聊天窗口发送「一键启动哈基米聊天系统」即可进入伴聊循环。
 echo.
-node src/bridge-daemon.mjs
+node --experimental-sqlite src/bridge-daemon.mjs
 
 echo.
 echo [*] 守护进程已停止。正在准备自动重启 (按 Ctrl+C 可彻底退出)...

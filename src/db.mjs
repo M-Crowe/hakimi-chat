@@ -1088,7 +1088,10 @@ export function cleanTestTokenLogs() {
     DELETE FROM token_usage 
     WHERE session_key LIKE 'test:%' 
        OR session_key LIKE 'group:test_%' 
+       OR session_key LIKE 'group:999888%' 
+       OR session_key = 'group:88812345'
        OR session_key = 'group:123' 
+       OR group_id IN (88812345, 999888111, 999888222, 999888333, 999888777)
        OR (group_id = 0 AND session_key NOT LIKE 'private:%')
   `).run();
   return {

@@ -16,11 +16,18 @@ kernel32 = ctypes.windll.kernel32
 GENERIC_ALL = 0x10000000
 DESKTOP_NAME = "WeChatBotDesktop"
 
+def open_default_desktop():
+    for mask in [0x0100 | 0x0001 | 0x0080, 0x0100, GENERIC_ALL, 0x02000000]:
+        h = user32.OpenDesktopW("Default", 0, False, mask)
+        if h:
+            return h
+    return 0
+
 def close_desktop_and_wechat():
     print("[*] 正在安全切回主桌面并关闭微信虚拟桌面...")
 
     # 1. 确保切回主桌面 (Default)
-    h_default = user32.OpenDesktopW("Default", 0, False, GENERIC_ALL)
+    h_default = open_default_desktop()
     if h_default:
         user32.SwitchDesktop(h_default)
         user32.SetThreadDesktop(h_default)

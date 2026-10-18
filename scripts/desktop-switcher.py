@@ -2,16 +2,28 @@ import ctypes
 from ctypes import wintypes
 import os
 import sys
+import tempfile
 import time
 import subprocess
-
 import winreg
 
 user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
 
+DESKTOP_SWITCHDESKTOP = 0x0100
+DESKTOP_READOBJECTS = 0x0001
+DESKTOP_WRITEOBJECTS = 0x0080
 GENERIC_ALL = 0x10000000
 DESKTOP_NAME = "WeChatBotDesktop"
+
+SIGNAL_FILE = os.path.join(tempfile.gettempdir(), "hakimi_desktop_switch_back.sig")
+
+def open_default_desktop():
+    for mask in [0x0100 | 0x0001 | 0x0080, 0x0100, GENERIC_ALL, 0x02000000]:
+        h = user32.OpenDesktopW("Default", 0, False, mask)
+        if h:
+            return h
+    return 0
 
 def find_weixin_path():
     candidates = [
@@ -75,7 +87,6 @@ class PROCESS_INFORMATION(ctypes.Structure):
 WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 
 def check_process_running(proc_name):
-    # 检查进程名是否在运行
     cmd = f'tasklist /FI "IMAGENAME eq {proc_name}"'
     res = subprocess.run(cmd, capture_output=True, text=True, shell=True)
     return proc_name.lower() in res.stdout.lower()
@@ -123,16 +134,23 @@ def ensure_weixin_running(h_bot):
         time.sleep(4)
 
 def switch_with_gui_bar():
-    h_default = user32.OpenDesktopW("Default", 0, False, GENERIC_ALL)
+    # 0. 清理旧信号文件
+    if os.path.exists(SIGNAL_FILE):
+        try:
+            os.remove(SIGNAL_FILE)
+        except Exception:
+            pass
+
+    # 1. 在主桌面常驻并持有主桌面句柄
+    h_default = open_default_desktop()
     h_bot = user32.OpenDesktopW(DESKTOP_NAME, 0, False, GENERIC_ALL)
-    
     if not h_bot:
         h_bot = user32.CreateDesktopW(DESKTOP_NAME, None, None, 0, GENERIC_ALL, None)
 
-    # 1. 确保微信在后台桌面已经启动
+    # 2. 确保微信在后台桌面已经启动
     ensure_weixin_running(h_bot)
 
-    # 2. 在后台桌面启动一个醒目的“悬浮返回主桌面”图形按钮
+    # 3. 在后台桌面启动“悬浮返回主桌面”导航条
     python_exe = sys.executable
     helper_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "desktop-floating-bar.py")
     
@@ -157,11 +175,43 @@ def switch_with_gui_bar():
     kernel32.CloseHandle(pi.hProcess)
     kernel32.CloseHandle(pi.hThread)
 
-    print("[+] 悬浮返回工具条已就绪，正在切入微信桌面...")
+    print("[+] 悬浮返回工具条与双向安全看门狗已就绪，正在切入微信桌面...")
     time.sleep(0.5)
     
-    # 3. 执行桌面切换
+    # 4. 执行桌面切换
     user32.SwitchDesktop(h_bot)
+
+    # 5. 【核心防卡死守护】主桌面看门狗常驻监听
+    # 无论虚拟桌面内发生任何异常（误关窗口、闪退、找不到按钮），60秒或收到信号均必定切回主桌面！
+    start_time = time.time()
+    max_duration = 60  # 60秒保底倒计时
+    print(f"[*] 主桌面看门狗已激活 (最长等待 {max_duration} 秒或扫码后返回)...")
+
+    while time.time() - start_time < max_duration:
+        time.sleep(0.3)
+        # 监听虚拟桌面的返回信号
+        if os.path.exists(SIGNAL_FILE):
+            print("[+] 收到虚拟桌面返回指令，正在切换回日常主桌面...")
+            break
+
+    # 6. 超时或收到信号后，主桌面看门狗强制执行切回主桌面
+    for handle in [h_default, open_default_desktop()]:
+        if handle:
+            try:
+                user32.SwitchDesktop(handle)
+                user32.SetThreadDesktop(handle)
+                break
+            except Exception:
+                pass
+
+    # 清理信号文件
+    try:
+        if os.path.exists(SIGNAL_FILE):
+            os.remove(SIGNAL_FILE)
+    except Exception:
+        pass
+
+    print("[+] 已安全返回日常电脑主屏幕！")
 
 if __name__ == "__main__":
     switch_with_gui_bar()

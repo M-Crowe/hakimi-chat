@@ -36,7 +36,8 @@ export function findPythonPath(projectRoot = PROJECT_ROOT) {
       if (fs.existsSync(venvPy)) return venvPy;
     }
     try {
-      execSync("where python", { stdio: "ignore" });
+      // 必须实际执行测试，排除 WindowsApps 0 字节应用商店占位符 (会报 exit 9009)
+      execSync("python -c \"import sys; sys.exit(0)\"", { stdio: "ignore" });
       return "python";
     } catch {
       return null;
@@ -47,11 +48,11 @@ export function findPythonPath(projectRoot = PROJECT_ROOT) {
       if (fs.existsSync(venvPy)) return venvPy;
     }
     try {
-      execSync("which python3", { stdio: "ignore" });
+      execSync("python3 -c \"import sys; sys.exit(0)\"", { stdio: "ignore" });
       return "python3";
     } catch {
       try {
-        execSync("which python", { stdio: "ignore" });
+        execSync("python -c \"import sys; sys.exit(0)\"", { stdio: "ignore" });
         return "python";
       } catch {
         return null;
@@ -582,7 +583,10 @@ export class HakimiLauncher {
   }
 
   ensureWechatEnvironment() {
-    let py = findPythonPath(this.projectRoot);
+    const venvPath = path.join(this.projectRoot, ".venv-wechat");
+    const venvPy = process.platform === "win32"
+      ? path.join(venvPath, "Scripts", "python.exe")
+      : path.join(venvPath, "bin", "python");
 
     const hasUv = (() => {
       try {
@@ -593,19 +597,16 @@ export class HakimiLauncher {
       }
     })();
 
-    const venvPath = path.join(this.projectRoot, ".venv-wechat");
-    const venvPy = process.platform === "win32"
-      ? path.join(venvPath, "Scripts", "python.exe")
-      : path.join(venvPath, "bin", "python");
+    let py = findPythonPath(this.projectRoot);
 
-    // 若未检测到现成虚拟环境，但系统装有极速包管理器 uv，优先使用 uv 秒级创建环境
-    if (!py && hasUv) {
-      this.logger.log("Launcher", "⚡ 检测到系统已安装 uv，正在使用 uv 秒级初始化 .venv-wechat 虚拟环境...", "warn");
+    // 只要本地还没有 .venv-wechat 且系统有 uv，无条件优先使用 uv 秒级初始化项目专属虚拟环境 (Python 3.12)
+    if (!fs.existsSync(venvPy) && hasUv) {
+      this.logger.log("Launcher", "⚡ 检测到系统已安装 uv，正在为微信伴聊初始化 .venv-wechat 虚拟环境 (Python 3.12)...", "warn");
       try {
         execSync("uv venv .venv-wechat --python 3.12", { cwd: this.projectRoot, stdio: "inherit" });
         if (fs.existsSync(venvPy)) {
           py = venvPy;
-          this.logger.log("Launcher", "✅ uv 虚拟环境创建成功！");
+          this.logger.log("Launcher", "✅ .venv-wechat 虚拟环境创建成功！");
         }
       } catch (err) {
         this.logger.log("Launcher", `⚠️ uv venv 创建跳过: ${err.message}`, "warn");
@@ -626,9 +627,14 @@ export class HakimiLauncher {
       if (fs.existsSync(reqPath)) {
         this.logger.log("Launcher", "📦 检测到微信服务缺少必要 Python 库，正在自动安装 (requirements-wechat.txt)...", "warn");
         try {
-          if (hasUv) {
-            // 优先使用 uv 极速安装
-            execSync(`uv pip install -r "${reqPath}" --python "${py}"`, {
+          if (hasUv && fs.existsSync(venvPy)) {
+            // 精确指定虚拟环境 python.exe 路径，绝不碰 WindowsApps
+            execSync(`uv pip install -r "${reqPath}" --python "${venvPy}"`, {
+              cwd: this.projectRoot,
+              stdio: "inherit"
+            });
+          } else if (hasUv) {
+            execSync(`uv pip install -r "${reqPath}"`, {
               cwd: this.projectRoot,
               stdio: "inherit"
             });

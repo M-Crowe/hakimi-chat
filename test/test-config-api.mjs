@@ -9,6 +9,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const configPath = path.resolve(PROJECT_ROOT, "config.json");
+const configExamplePath = path.resolve(PROJECT_ROOT, "config.example.json");
+
+let createdTempConfig = false;
+if (!fs.existsSync(configPath)) {
+  fs.copyFileSync(configExamplePath, configPath);
+  createdTempConfig = true;
+}
 
 console.log("=== 开始验证系统配置 API 与热重载机制 (Config API & Hot Reload Test) ===");
 
@@ -88,8 +95,12 @@ webServer.server.listen(5128, async () => {
     console.log("✅ config.json 文件持久化验证通过！");
 
     // 4. 恢复初始配置
-    saved.chatBehavior = originalChatBehavior;
-    fs.writeFileSync(configPath, JSON.stringify(saved, null, 2), "utf-8");
+    if (createdTempConfig) {
+      try { fs.unlinkSync(configPath); } catch {}
+    } else {
+      saved.chatBehavior = originalChatBehavior;
+      fs.writeFileSync(configPath, JSON.stringify(saved, null, 2), "utf-8");
+    }
     console.log("✅ 现场清理完毕，初始配置已还原！");
 
     await webServer.stop();

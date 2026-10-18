@@ -2,7 +2,8 @@ import { getCharacterState, getUserAffinity } from "../src/db.mjs";
 
 console.log("=== 配置校验 ===");
 import fs from "node:fs";
-const config = JSON.parse(fs.readFileSync("./config.json", "utf-8"));
+const configPath = fs.existsSync("./config.json") ? "./config.json" : "./config.example.json";
+const config = JSON.parse(fs.readFileSync(configPath, "utf-8"));
 console.log("机器人 QQ:", config.snowLuma.botQqId);
 console.log("管理员 QQ 列表:", config.snowLuma.adminQqIds);
 console.log("允许群聊列表:", config.snowLuma.allowedGroupIds);

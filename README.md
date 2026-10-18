@@ -165,8 +165,7 @@ cp config.example.json config.json
     "maxImages": 15
   },
   "web": {
-    "port": 5120,
-    "adminToken": "hakimi-admin-token-2026"
+    "port": 5120
   }
 }
 ```
@@ -184,8 +183,7 @@ cp config.example.json config.json
 | `daemon` | `internalHttpPort` | Number | `34567` | 内部 IPC 通信端口 (MCP 与微信网关回调) |
 | `chatBehavior` | `debounceMs` | Number | `2500` | 半句话未完结防抖延时 (ms) |
 | `chatBehavior` | `maxImages` | Number | `15` | 单会话 FIFO 视觉图片最大缓冲数量 |
-| `web` | `port` | Number | `5120` | Web 管理控制台端口 |
-| `web` | `adminToken` | String | `"hakimi-admin-token-2026"` | Web 控制台管理员鉴权密钥 |
+| `web` | `port` | Number | `5120` | Web 管理控制台端口（免密开放） |
 
 ### 3. 启动运行
 

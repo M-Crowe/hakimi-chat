@@ -117,7 +117,7 @@ const DEFAULT_CONFIG = {
   antigravity: { lsAddress: "http://127.0.0.1:6714", agentPreset: "tomoko", maxTurns: 30 },
   dsh: { enabled: true, home: "", defaultModel: "deepseek-flash", agentPreset: "tomoko" },
   daemon: { internalHttpPort: 34567, silentBufferLimit: 8, patrolMinMinutes: 3, patrolMaxMinutes: 8 },
-  web: { port: 5120, adminToken: "hakimi-admin-token-2026", cors: true },
+  web: { port: 5120, cors: true },
   chatBehavior: {
     ambientTriggerThreshold: 10,
     ambientTriggerProbability: 0.1,

@@ -367,9 +367,6 @@
           <button @click="reloadDaemonConfig" class="py-1.5 px-2.5 rounded btn-tactile text-[11px] text-slate-300 hover:text-white" title="重新加载系统配置与人设">
             <span>🔄</span>
           </button>
-          <button @click="logout" class="py-1.5 px-2.5 rounded btn-tactile-red text-[11px] text-slate-300 hover:text-red-300" title="退出管理控制台鉴权">
-            <span>🚪</span>
-          </button>
         </div>
 
         <div class="flex items-center justify-between text-[10px] text-slate-500 font-telemetry pt-1 px-1">
@@ -2115,33 +2112,6 @@
       </div>
     </div>
 
-    <!-- Modal 6: Operator Security Key Access Hatch (Login Modal) -->
-    <div v-if="showLoginModal" class="fixed inset-0 bg-black/90 backdrop-blur-lg z-50 flex items-center justify-center p-4">
-      <div class="rack-card rounded-lg p-8 border border-[#2b3952] w-full max-w-sm space-y-5 shadow-2xl text-center relative">
-        <div class="screw screw-tl"></div>
-        <div class="screw screw-tr"></div>
-        <div class="screw screw-bl"></div>
-        <div class="screw screw-br"></div>
-
-        <div class="w-16 h-16 rounded-lg bg-gradient-to-b from-[#243147] to-[#101522] border border-[#3b4d6e] flex items-center justify-center text-3xl mx-auto shadow-lg relative">
-          <span class="filter drop-shadow-[0_0_8px_rgba(245,158,11,0.7)]">🛰️</span>
-        </div>
-        
-        <div>
-          <div class="mil-label border-[#3b4d6e] text-cyan-400 mb-1.5 font-telemetry">AUTHENTICATION GATE</div>
-          <h2 class="text-lg font-avionics font-bold text-white tracking-wider">HAKIMI MISSION CONTROL</h2>
-          <p class="text-xs text-slate-400 mt-1 font-telemetry">请输入管理员操作密匙 (ADMIN TOKEN)</p>
-        </div>
-
-        <div class="space-y-3 font-telemetry">
-          <input v-model="loginToken" @keyup.enter="handleLogin" type="password" placeholder="ADMIN ACCESS TOKEN" class="slot-inset w-full rounded px-4 py-3 text-sm text-center text-white focus:outline-none focus:border-amber-500 font-telemetry tracking-widest">
-          <button @click="handleLogin" class="btn-tactile-amber w-full py-3 rounded text-sm font-avionics font-bold tracking-wider">
-            AUTHORIZE & ENTER // 登入控制台
-          </button>
-        </div>
-      </div>
-    </div>
-
   </div>
 
   <!-- Vue 3 Application Script -->
@@ -2150,9 +2120,9 @@
 
     createApp({
       setup() {
-        const adminToken = ref(localStorage.getItem('hakimi_admin_token') || 'hakimi-admin-token-2026');
-        const showLoginModal = ref(!adminToken.value);
-        const loginToken = ref(adminToken.value);
+        const adminToken = ref('');
+        const showLoginModal = ref(false);
+        const loginToken = ref('');
 
         const currentTab = ref('groups');
         const tabs = [
@@ -2309,19 +2279,12 @@
         const isEditingSlang = ref(false);
         const slangForm = reactive({ id: null, word: '', meaning: '', count: 1 });
 
-        // API Helper
+        // API Helper (免密请求)
         async function api(path, options = {}) {
           const headers = options.headers || {};
-          if (adminToken.value) {
-            headers['Authorization'] = `Bearer ${adminToken.value}`;
-          }
           headers['Content-Type'] = 'application/json';
           try {
             const res = await fetch(path, { ...options, headers });
-            if (res.status === 401) {
-              showLoginModal.value = true;
-              throw new Error('未授权，请重新登录');
-            }
             return await res.json();
           } catch (err) {
             console.warn(`[API] ${path} 请求失败:`, err.message);
@@ -2330,27 +2293,10 @@
         }
 
         function handleLogin() {
-          if (!loginToken.value) return;
-          api('/api/auth/login', {
-            method: 'POST',
-            body: JSON.stringify({ token: loginToken.value })
-          }).then(res => {
-            if (res.success) {
-              adminToken.value = loginToken.value;
-              localStorage.setItem('hakimi_admin_token', adminToken.value);
-              showLoginModal.value = false;
-              initDashboard();
-            } else {
-              alert(res.message || 'Token 验证失败');
-            }
-          }).catch(e => alert(e.message));
+          showLoginModal.value = false;
         }
 
-        function logout() {
-          localStorage.removeItem('hakimi_admin_token');
-          adminToken.value = '';
-          showLoginModal.value = true;
-        }
+        function logout() {}
 
         // 1. Group Operations
         async function loadGroups() {
@@ -3368,9 +3314,7 @@
         });
 
         onMounted(() => {
-          if (adminToken.value) {
-            initDashboard();
-          }
+          initDashboard();
         });
 
         return {

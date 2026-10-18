@@ -46,7 +46,6 @@
   },
   "web": {
     "port": 5120,
-    "adminToken": "hakimi-admin-token-2026",
     "cors": true
   }
 }

@@ -64,23 +64,6 @@ export function createWebServer({ config, eventBus, daemonApi }) {
   }
 
   const webPort = config.web?.port || 5120;
-  let adminToken = config.web?.adminToken || "";
-
-  // 弱口令拦截与临时安全随机密码生成
-  if (!adminToken || adminToken === "hakimi-admin-token-2026") {
-    const tempRandomToken = crypto.randomBytes(16).toString("hex");
-    adminToken = tempRandomToken;
-    if (config.web) {
-      config.web.adminToken = tempRandomToken;
-    }
-    console.warn("\n=======================================================");
-    console.warn("⚠️  [安全警告] 检测到当前正在使用默认弱口令或未设置 adminToken！");
-    console.warn(`🔑 [临时安全密码]: ${tempRandomToken}`);
-    console.warn("📌 请尽快在 config.json 中修改 web.adminToken 以保障服务安全！");
-    console.warn("=======================================================\n");
-  }
-
-  // 确保开机时角色时空位置与活跃人设严格对齐
   const initialActivePreset = config.antigravity?.agentPreset || "tomoko";
   syncCharacterStateForPersona(initialActivePreset);
 
@@ -98,39 +81,14 @@ export function createWebServer({ config, eventBus, daemonApi }) {
     next();
   });
 
-  // 鉴权中间件 (除了 /api/auth/login 与前端静态资源，/api/ 与 /images 均需鉴权)
-  const authMiddleware = (req, res, next) => {
-    if (!adminToken) return next();
-    const reqPath = (req.path || "").toLowerCase();
-    if (reqPath === "/api/auth/login" || reqPath.startsWith("/api/auth/login/")) return next();
-    const isApi = reqPath === "/api" || reqPath.startsWith("/api/");
-    const isImages = reqPath === "/images" || reqPath.startsWith("/images/");
-    if (!isApi && !isImages) return next();
-
-    const authHeader = req.headers.authorization;
-    const bearerToken = authHeader && authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
-    const customHeader = req.headers["x-admin-token"];
-    const queryToken = req.query?.token;
-
-    const token = bearerToken || customHeader || queryToken;
-    if (typeof token === "string" && token === adminToken) {
-      return next();
-    }
-    return res.status(401).json({ error: "Unauthorized: Invalid or missing admin token" });
-  };
-
-  app.use(authMiddleware);
+  // 免密访问中间件
+  app.use((req, res, next) => next());
 
   // -----------------------------------------------------------
-  // 1. 认证接口 (Authentication)
+  // 1. 认证接口 (Authentication - 免密开放)
   // -----------------------------------------------------------
   app.post("/api/auth/login", (req, res) => {
-    const { token, password } = req.body || {};
-    const input = token || password;
-    if (!adminToken || input === adminToken) {
-      return res.json({ success: true, token: adminToken, message: "登录成功" });
-    }
-    return res.status(401).json({ success: false, message: "Token 或密码错误" });
+    return res.json({ success: true, token: "", message: "免密访问" });
   });
 
   // -----------------------------------------------------------
@@ -901,45 +859,11 @@ export function createWebServer({ config, eventBus, daemonApi }) {
 
 
   // -----------------------------------------------------------
-  // 9. WebSocket 实时推流广播网关
+  // 9. WebSocket 实时推流广播网关 (免密开放)
   // -----------------------------------------------------------
   const clients = new Set();
 
-  wss.on("connection", (wsClient, req) => {
-    // 检查 Token
-    let clientToken = null;
-    try {
-      const u = new URL(req.url, `http://${req.headers.host || "127.0.0.1"}`);
-      clientToken = u.searchParams.get("token");
-    } catch {}
-
-    if (adminToken && clientToken !== adminToken) {
-      // 允许连接并等待 5 秒发送 auth 消息，否则断开
-      const authTimeout = setTimeout(() => {
-        if (!wsClient.authenticated) {
-          try { wsClient.close(4001, "Auth timeout"); } catch {}
-        }
-      }, 5000);
-
-      wsClient.on("close", () => {
-        clearTimeout(authTimeout);
-      });
-
-      wsClient.on("message", (raw) => {
-        try {
-          const msg = JSON.parse(raw);
-          if (msg.type === "auth" && msg.token === adminToken) {
-            wsClient.authenticated = true;
-            clearTimeout(authTimeout);
-            clients.add(wsClient);
-            sendInitialState(wsClient);
-            wsClient.send(JSON.stringify({ type: "auth_success" }));
-          }
-        } catch {}
-      });
-      return;
-    }
-
+  wss.on("connection", (wsClient) => {
     wsClient.authenticated = true;
     clients.add(wsClient);
     sendInitialState(wsClient);

@@ -184,9 +184,9 @@ test("6. 微信日志流同步至 Web 控制台看板 (Port 5120)", async () => 
 });
 
 test("7. 文件归档与根目录脚本布局健全性验证", () => {
-  // 检查根目录 start.bat 与 start.sh
+  // 检查根目录 start.bat 与 stop.bat
   assert(fs.existsSync(path.join(PROJECT_ROOT, "start.bat")), "根目录 start.bat 应存在");
-  assert(fs.existsSync(path.join(PROJECT_ROOT, "start.sh")), "根目录 start.sh 应存在");
+  assert(fs.existsSync(path.join(PROJECT_ROOT, "stop.bat")), "根目录 stop.bat 应存在");
 
   // 检查归档目录 scripts/legacy/
   const legacyDir = path.join(PROJECT_ROOT, "scripts", "legacy");

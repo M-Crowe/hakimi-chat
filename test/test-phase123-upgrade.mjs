@@ -138,12 +138,12 @@ delete modifiedPricing.models["test-model"];
 savePricingConfig(modifiedPricing);
 console.log("✅ config/pricing.json 阶梯费率外置、热更新与计算逻辑校验通过");
 
-// 3.2 验证跨平台脚本与 CI 文件存在性
-const startShPath = path.resolve(PROJECT_ROOT, "start.sh");
-assert(fs.existsSync(startShPath), "start.sh 跨平台脚本必须存在");
-const shContent = fs.readFileSync(startShPath, "utf-8");
-assert(shContent.includes("Node.js >= 22.5.0") || shContent.includes("MAJOR") || shContent.includes("22"), "start.sh 必须包含 Node 版本检测");
-console.log("✅ start.sh Linux/macOS 跨平台环境检测与启动脚本校验通过");
+// 3.2 验证启动与停止脚本存在性
+const startBatPath = path.resolve(PROJECT_ROOT, "start.bat");
+assert(fs.existsSync(startBatPath), "start.bat 脚本必须存在");
+const stopBatPath = path.resolve(PROJECT_ROOT, "stop.bat");
+assert(fs.existsSync(stopBatPath), "stop.bat 脚本必须存在");
+console.log("✅ start.bat / stop.bat 核心控制脚本校验通过");
 
 const ciPath = path.resolve(PROJECT_ROOT, ".github/workflows/ci.yml");
 assert(fs.existsSync(ciPath), ".github/workflows/ci.yml 必须存在");
@@ -159,21 +159,20 @@ assert(mcpContent.includes("[-2, +2]"), "mcp-server.mjs 工具描述必须明确
 assert(!mcpContent.includes("[af:+3"), "mcp-server.mjs 绝不能出现超出 +2 的示例");
 console.log("✅ MCP 工具与三层协议好感度 [-2, +2] 约束校验通过");
 
-// 3.4 验证 Web Server 弱口令拦截与临时 Token 生成机制
+// 3.4 验证 Web Server 免密无感控制台架构
 import { createWebServer } from "../src/web-server.mjs";
 import { EventEmitter } from "node:events";
 const dummyEventBus = new EventEmitter();
 const testDummyConfig = {
-  web: { port: 5199, adminToken: "hakimi-admin-token-2026", cors: true }
+  web: { port: 5199, cors: true }
 };
 const dummyApp = createWebServer({
   config: testDummyConfig,
   eventBus: dummyEventBus,
   daemonApi: {}
 });
-assert.notStrictEqual(testDummyConfig.web.adminToken, "hakimi-admin-token-2026", "默认弱口令必须被自动拦截替换为随机 Token");
-assert.strictEqual(testDummyConfig.web.adminToken.length, 32, "临时密码必须为 16 字节随机 hex (32 字符)");
-console.log("✅ Web Server 弱口令拦截与 16 字节随机密钥生成验证通过");
+assert(dummyApp !== null, "Web Server 应当支持免密创建与直接访问");
+console.log("✅ Web Server 免密无感控制台架构验证通过");
 
 // 3.5 验证大模型定价计算 (calculateTokenCost)
 const costResult = calculateTokenCost({

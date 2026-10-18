@@ -195,9 +195,6 @@ npm start
 
 # Windows（双击 start.bat 即可弹出控制台交互菜单）
 .\start.bat
-
-# Linux / macOS
-chmod +x start.sh && ./start.sh
 ```
 
 **命令行快捷参数（跳过菜单直接启动）**：
@@ -271,7 +268,7 @@ hakimi-chat/
 ├── test/                         # 单元测试与端到端自动化测试套件
 ├── config.example.json           # 配置文件模板
 ├── start.bat                     # Windows 极简一键自检与启动脚本 (直调 launcher.mjs)
-├── start.sh                      # Linux/macOS 跨平台启动脚本
+├── stop.bat                      # Windows 一键安全停止服务与销毁微信虚拟桌面
 ├── start.ps1                     # PowerShell 快捷脚本
 └── package.json                  # 项目依赖与快捷脚本
 ```

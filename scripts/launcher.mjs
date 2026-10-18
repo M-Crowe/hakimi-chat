@@ -522,6 +522,9 @@ export function parseCliArgs(args = process.argv.slice(2)) {
   if (args.includes("--switch") || args.includes("--login")) {
     return { mode: "switch" };
   }
+  if (args.includes("--stop") || args.includes("--kill")) {
+    return { mode: "stop" };
+  }
   return { mode: null };
 }
 
@@ -696,6 +699,22 @@ export class HakimiLauncher {
     });
   }
 
+  async checkWechatLoginStatus(py) {
+    if (process.platform !== "win32" || !py) return "UNKNOWN";
+    const scriptPath = path.join(this.projectRoot, "scripts", "check-wechat-login.py");
+    if (!fs.existsSync(scriptPath)) return "UNKNOWN";
+    try {
+      const output = execSync(`"${py}" "${scriptPath}"`, {
+        cwd: this.projectRoot,
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 4000
+      }).toString().trim();
+      return output;
+    } catch {
+      return "UNKNOWN";
+    }
+  }
+
   setupGracefulShutdown() {
     const handleSignal = async (signal) => {
       if (this.isShuttingDown) return;
@@ -750,6 +769,36 @@ export class HakimiLauncher {
       if (process.platform === "win32") {
         const wechatEnv = this.ensureWechatEnvironment();
         if (wechatEnv.ready) {
+          // 智能预检后台微信登录状态
+          if (process.stdin.isTTY) {
+            const loginStatus = await this.checkWechatLoginStatus(wechatEnv.py);
+            if (loginStatus === "LOGGED_IN") {
+              this.logger.log("Launcher", "✅ 检测到后台隔离桌面的微信已就绪并处于登录状态");
+            } else {
+              console.log("\n===================================================");
+              console.log("📱 [微信状态提示] 检测到后台隔离桌面的微信尚未登录！");
+              console.log("===================================================");
+              console.log("微信运行在物理隔离的后台虚拟桌面中，需扫码登录方可正常收发消息。");
+
+              const shouldSwitch = await new Promise((resolve) => {
+                const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+                rl.question("是否现在切换到后台桌面进行扫码登录？[Y/n] (直接回车默认 Y): ", (ans) => {
+                  rl.close();
+                  const a = (ans || "y").trim().toLowerCase();
+                  resolve(a === "y" || a === "yes");
+                });
+              });
+
+              if (shouldSwitch) {
+                console.log("[Launcher] 正在切入后台桌面并唤起微信二维码，请准备扫码...");
+                await this.runDesktopSwitcher();
+                console.log("[Launcher] 已从后台桌面切回主屏，继续拉起服务矩阵...\n");
+              } else {
+                this.logger.log("Launcher", "⚠️ 用户跳过登录，继续启动。如需扫码请随时运行: start.bat --login", "warn");
+              }
+            }
+          }
+
           const wechatSupervisor = new ProcessSupervisor({
             name: "WeChat-Service",
             tag: "WeChat",
@@ -883,11 +932,12 @@ if (isDirectExecution) {
   node scripts/launcher.mjs [选项]
 
 选项:
-  --all           全量双轨伴聊 (微信 4.1 + QQ 机器人 + Web 看板) [默认]
-  --wechat        仅微信独立伴聊模式 (微信 4.1 伴聊 + Web 看板)
-  --qq            仅启动 QQ 核心服务 (Port 34567, 5120)
+  --all             全量双轨伴聊 (微信 4.1 + QQ 机器人 + Web 看板) [默认]
+  --wechat          仅微信独立伴聊模式 (微信 4.1 伴聊 + Web 看板)
+  --qq              仅启动 QQ 核心服务 (Port 34567, 5120)
   --login, --switch 调起微信后台虚拟桌面穿梭器 (用于首次扫码登录或窗口管理)
-  --help, -h      显示此帮助信息
+  --stop            一键关闭哈基米所有伴聊服务进程并释放端口
+  --help, -h        显示此帮助信息
 `);
     process.exit(0);
   }
@@ -909,6 +959,13 @@ if (isDirectExecution) {
     }
 
     const launcher = new HakimiLauncher();
+
+    if (selectedMode === "stop") {
+      console.log("🛑 正在停止哈基米所有伴聊子服务并释放端口 (34567, 5120, 34568)...");
+      await PortManager.cleanAll(launcher.ports, launcher.logger);
+      console.log("✅ 所有服务子进程已彻底关闭，端口已全部安全释放！");
+      process.exit(0);
+    }
 
     if (selectedMode === "switch") {
       await launcher.runDesktopSwitcher();

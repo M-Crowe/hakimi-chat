@@ -1,6 +1,6 @@
 ---
 name: tomoko-bridge
-description: 一键启动并运行「哈基米聊天系统」伴聊大脑（支持智子/白龙娘/小鲸鱼/Haena等多角色）。提供独立 Web 控制台（Port 5120）、内部 IPC 通信网关（Port 34567）、多群独立启闭与触发策略、智能吸底实时推流、15张图片严格FIFO淘汰、大模型标准 Token 校准与 KV Cache 缓存命中率监测、时空状态双向同步与好感度自动持久化。
+description: 一键启动并运行「哈基米聊天系统」伴聊大脑（支持微信4.1后台虚拟桌面无感伴聊与QQ多群，支持智子/白龙娘/小鲸鱼/Haena等多角色）。提供独立 Web 控制台（Port 5120）、内部 IPC 通信网关（Port 34567）、微信隔离网关（Port 34568）、多群独立启闭与触发策略、智能吸底实时推流、15张图片严格FIFO淘汰、大模型标准 Token 校准与 KV Cache 缓存命中率监测、时空状态双向同步与好感度自动持久化。
 ---
 
 # 🐱 哈基米聊天系统 (Hakimi Chat System) 伴聊大脑启动与运行规范
@@ -22,10 +22,14 @@ description: 一键启动并运行「哈基米聊天系统」伴聊大脑（支�
 ## 🛠️ 环境与双端口架构
 
 * **运行环境**：Node.js >= 22.5.0（基于 Node 原生 `node:sqlite` WAL 高并发队列）
-* **双端口拓扑**：
-  * **Port 5120**：现代化 Web 管理控制台与 WebSocket 实时双向推流（支持 Bearer Token 鉴权，默认 Token `hakimi-admin-token-2026`）；
-  * **Port 34567**：内部 IPC 通信网关（专供 MCP 工具 `agy-tomoko-mcp` 与本地 CLI 高速回调）；
-  * **Port 3000**：SnowLuma OneBot 11 协议栈。
+* **双平台与多端口拓扑**：
+  * **微信 4.1 原生后台虚拟桌面**：运行于 `WeChatBotDesktop` 独立隔离桌面，绝不抢前台键盘鼠标焦点；本地守护 HTTP API 监听 **Port 34568**（`/health`, `/send`, `/listen` 动态热注册与移除群聊）；
+  * **Port 5120**：现代化 Web 管理控制台与 WebSocket 实时双向推流（支持 Bearer Token 鉴权，默认 Token `hakimi-admin-token-2026`，支持前端图形化动态添加/管理/筛选 QQ 与微信托管群聊）；
+  * **Port 34567**：内部 IPC 通信网关（专供 MCP 工具 `agy-tomoko-mcp`、本地 CLI 与微信网关高速回调）；
+  * **Port 3000**：SnowLuma OneBot 11 协议栈（QQ 接入）。
+* **群组映射与管理机制**：
+  * QQ 群：原始群号（如 `587071853`）；
+  * 微信群：前端与数据库分配 `99xxxx` 专用虚拟频段 ID（如“道馆馆”映射为 `999001`），Web 控制台支持一键添加微信群名、平台筛选（QQ / 微信）、实时启闭与触发策略配置，增删改自动向 Python 微信守护热推送注册，无需重启。
 
 ---
 
@@ -44,20 +48,28 @@ description: 一键启动并运行「哈基米聊天系统」伴聊大脑（支�
 收到启动请求后，按以下 4 步执行端到端闭环：
 
 ### 1. 配置与人设同步
-1. **参数提取**：解析指令中的【目标群号】（默认 `587071853`）与【人格 preset】（默认 `tomoko`）；
+1. **参数提取**：解析指令中的【目标群号】（默认 `587071853` 或微信群 `999001`）与【人格 preset】（默认 `tomoko`）；
 2. **同步配置**：若 `config.json` 不存在先从 `config.example.json` 复制，确保字段生效：
    - `snowLuma.allowedGroupIds` -> `[目标群号]`
    - `antigravity.agentPreset` -> 指定人格名
 3. **人设与身位自动对齐**：根据 `src/personas.mjs` 自动载入人设提示词，并调用 `syncCharacterStateForPersona` 强制同步角色初始时空。
 
-### 2. 守护进程检查与启动
-检查端口 `34567` 与 `5120` 是否正常监听；若未启动，使用 `run_command`（`IsDaemon: true`）拉起：
+### 2. 守护进程检查与启动 (QQ + 微信双守护)
+检查端口 `34568` (微信服务)、`34567` (内部IPC) 与 `5120` (Web控制台) 是否正常监听；若未启动，使用 `run_command`（`IsDaemon: true`）拉起：
 ```powershell
-Get-NetTCPConnection -LocalPort 34567, 5120 -ErrorAction SilentlyContinue
-# 若未监听，启动守护进程：
-node src/bridge-daemon.mjs
+# 1. 检查并拉起微信 4.1 后台隔离守护服务 (WeChatBotDesktop)
+$wxConn = Get-NetTCPConnection -LocalPort 34568 -ErrorAction SilentlyContinue
+if (-not $wxConn) {
+    .venv-wechat\Scripts\python.exe -u scripts\wechat-service.py
+}
+
+# 2. 检查并拉起主守护进程 (Bridge Daemon)
+$nodeConn = Get-NetTCPConnection -LocalPort 34567 -ErrorAction SilentlyContinue
+if (-not $nodeConn) {
+    node --experimental-sqlite src\bridge-daemon.mjs
+}
 ```
-启动成功后，提示用户已就绪并可访问 Web 控制台：`http://127.0.0.1:5120`。
+启动成功后，提示用户已就绪并可访问 Web 控制台：`http://127.0.0.1:5120`。也可以双击执行根目录的 `start-wechat-bot.bat` 一键运行。
 
 ### 3. 挂起原子消息监听
 使用 `run_command`（`WaitMsBeforeAsync: 1000`）执行长轮询脚本，基于 SQLite WAL 原子队列消费新消息：

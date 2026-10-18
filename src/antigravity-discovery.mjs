@@ -1,61 +1,133 @@
-import { execSync } from "node:child_process";
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import { DatabaseSync } from "node:sqlite";
 import { calculateTokenCost } from "./pricing.mjs";
 
+const execAsync = promisify(exec);
+
+let cachedDiscovery = null;
+let cachedDiscoveryTime = 0;
+const DISCOVERY_CACHE_TTL_MS = 45000; // 45 秒内存 TTL 缓存 (30s-60s 区间)
+const DISCOVERY_FAILURE_TTL_MS = 3000; // 探测失败仅缓存 3 秒，避免长期阻断后续启动
+let inFlightDiscoveryPromise = null;
+
+export function getCachedLanguageServer() {
+  if (!cachedDiscovery) return null;
+  const ttl = cachedDiscovery.csrfToken ? DISCOVERY_CACHE_TTL_MS : DISCOVERY_FAILURE_TTL_MS;
+  if (Date.now() - cachedDiscoveryTime < ttl) {
+    return cachedDiscovery;
+  }
+  return null;
+}
+
+export function clearDiscoveryCache() {
+  cachedDiscovery = null;
+  cachedDiscoveryTime = 0;
+  inFlightDiscoveryPromise = null;
+}
+
 /**
- * 自动发现本地正在运行的 Antigravity Language Server 端口和 CSRF Token
+ * 异步非阻塞自动发现本地正在运行的 Antigravity Language Server 端口和 CSRF Token
+ * 具备 45 秒内存 TTL 缓存与并发合并，彻底消除 execSync 对 Node.js 事件循环长达 500-1500ms 的冻结阻塞
  */
-export function discoverLanguageServer() {
+export async function discoverLanguageServer({ forceRefresh = false } = {}) {
   if (process.env.ANTIGRAVITY_LS_ADDRESS && process.env.ANTIGRAVITY_CSRF_TOKEN) {
     let addr = process.env.ANTIGRAVITY_LS_ADDRESS.trim();
     if (!addr.startsWith("http://") && !addr.startsWith("https://")) {
       addr = `http://${addr}`;
     }
-    return {
+    const res = {
       address: addr,
       csrfToken: process.env.ANTIGRAVITY_CSRF_TOKEN.trim()
     };
+    cachedDiscovery = res;
+    cachedDiscoveryTime = Date.now();
+    return res;
   }
 
-  try {
-    const psCmd = `powershell -NoProfile -Command "(Get-CimInstance Win32_Process -Filter \\"Name = 'language_server.exe'\\") | Select-Object ProcessId, CommandLine | ConvertTo-Json"`;
-    const out = execSync(psCmd, { encoding: "utf-8" }).trim();
-    if (!out) return null;
-
-    let proc = JSON.parse(out);
-    if (Array.isArray(proc)) proc = proc[0];
-
-    const cmdLine = proc.CommandLine || "";
-    const pid = proc.ProcessId;
-
-    const tokenMatch = cmdLine.match(/--csrf_token\s+([^\s]+)/);
-    const csrfToken = tokenMatch ? tokenMatch[1] : "";
-
-    // 查找该 pid 监听的所有 127.0.0.1 端口
-    const netstatOut = execSync(`netstat -ano | findstr ${pid} | findstr LISTENING`, { encoding: "utf-8" });
-    const matches = [...netstatOut.matchAll(/127\.0\.0\.1:(\d+)/g)];
-    const ports = matches.map(m => m[1]);
-
-    // 6714 通常为 ConnectRPC 服务端口，如果有 6714 则优先选 6714，否则选最大的端口
-    let selectedPort = ports.find(p => p === "6714") || ports[ports.length - 1];
-
-    if (selectedPort && csrfToken) {
-      return {
-        address: `http://127.0.0.1:${selectedPort}`,
-        csrfToken
-      };
+  const now = Date.now();
+  if (!forceRefresh && cachedDiscovery) {
+    const ttl = cachedDiscovery.csrfToken ? DISCOVERY_CACHE_TTL_MS : DISCOVERY_FAILURE_TTL_MS;
+    if (now - cachedDiscoveryTime < ttl) {
+      return cachedDiscovery;
     }
-  } catch (err) {
-    console.warn("[Auto-Discovery] 自动探测 Antigravity Language Server 异常:", err.message);
   }
 
-  return {
-    address: "http://127.0.0.1:6714",
-    csrfToken: ""
-  };
+  if (inFlightDiscoveryPromise) {
+    return inFlightDiscoveryPromise;
+  }
+
+  if (process.platform !== "win32") {
+    const fallback = { address: "http://127.0.0.1:6714", csrfToken: "" };
+    cachedDiscovery = fallback;
+    cachedDiscoveryTime = Date.now();
+    return fallback;
+  }
+
+  inFlightDiscoveryPromise = (async () => {
+    try {
+      const psCmd = `powershell -NoProfile -Command "(Get-CimInstance Win32_Process -Filter \\"Name = 'language_server.exe'\\") | Select-Object ProcessId, CommandLine | ConvertTo-Json"`;
+      const { stdout: psOut } = await execAsync(psCmd, { encoding: "utf-8", timeout: 10000 });
+      const out = (psOut || "").trim();
+      if (!out) {
+        const fallback = { address: "http://127.0.0.1:6714", csrfToken: "" };
+        cachedDiscovery = fallback;
+        cachedDiscoveryTime = Date.now();
+        return fallback;
+      }
+
+      let proc = JSON.parse(out);
+      if (Array.isArray(proc)) proc = proc[0];
+
+      const cmdLine = proc.CommandLine || "";
+      const pid = proc.ProcessId;
+
+      const tokenMatch = cmdLine.match(/--csrf_token\s+([^\s]+)/);
+      const csrfToken = tokenMatch ? tokenMatch[1] : "";
+
+      // 查找该 pid 监听的所有 127.0.0.1 端口（findstr 若无匹配退出码为 1，需安全容错）
+      let netstatOut = "";
+      try {
+        const { stdout } = await execAsync(`netstat -ano | findstr ${pid} | findstr LISTENING`, { encoding: "utf-8", timeout: 5000 });
+        netstatOut = stdout || "";
+      } catch (err) {
+        netstatOut = err?.stdout || "";
+      }
+
+      const matches = [...netstatOut.matchAll(/127\.0\.0\.1:(\d+)/g)];
+      const ports = matches.map(m => m[1]);
+
+      // 6714 通常为 ConnectRPC 服务端口，如果有 6714 则优先选 6714，否则选最大的端口
+      let selectedPort = ports.find(p => p === "6714") || ports[ports.length - 1];
+
+      if (selectedPort && csrfToken) {
+        const result = {
+          address: `http://127.0.0.1:${selectedPort}`,
+          csrfToken
+        };
+        cachedDiscovery = result;
+        cachedDiscoveryTime = Date.now();
+        return result;
+      }
+    } catch (err) {
+      console.warn("[Auto-Discovery] 异步自动探测 Antigravity Language Server 异常:", err.message);
+    } finally {
+      inFlightDiscoveryPromise = null;
+    }
+
+    const fallback = {
+      address: "http://127.0.0.1:6714",
+      csrfToken: ""
+    };
+    cachedDiscovery = fallback;
+    cachedDiscoveryTime = Date.now();
+    return fallback;
+  })();
+
+  return inFlightDiscoveryPromise;
 }
 
 /**

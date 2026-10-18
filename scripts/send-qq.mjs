@@ -62,7 +62,7 @@ try {
       targetType,
       targetId: Number(targetId),
       message,
-      senderId: senderId ? Number(senderId) : undefined,
+      senderId: senderId != null && senderId !== "" ? Number(senderId) : undefined,
       sessionKey: `${targetType}:${targetId}`,
       client: customClient || undefined,
       modelName: customModel || undefined

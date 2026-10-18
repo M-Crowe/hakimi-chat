@@ -13,9 +13,19 @@ import {
   getSessionMemory, 
   saveSessionMemory,
   recordChatMessage,
+  updateChatMessageImages,
   getRecentChatContext,
+  getLastChatMessageId,
+  hasHumanInterrupted,
   recordSlang,
   getTopSlangs,
+  extractCandidateNgrams,
+  trackGroupSlangFrequency,
+  getTopGroupSlangs,
+  recordTulpaEpisode,
+  updateLatestTulpaEpisodeReply,
+  searchTulpaEpisodes,
+  getRecentTulpaEpisodes,
   pushInboxMessage,
   cleanStaleInboxMessages,
   getSessionState,
@@ -27,9 +37,13 @@ import {
   getManagedGroups,
   getManagedGroup,
   saveManagedGroup,
+  deleteManagedGroup,
+  toggleGroupEnabled,
+  allocateWechatGroupId,
   recordTokenUsage,
   estimateTokens,
-  pruneOldRecords
+  pruneOldRecords,
+  checkpointDatabase
 } from "./db.mjs";
 import { getActivePersona, loadPersonaPrompt, buildSystemPrompt } from "./personas.mjs";
 import { createWebServer } from "./web-server.mjs";
@@ -72,9 +86,15 @@ process.on("unhandledRejection", (reason) => {
   console.error("💥 [Daemon UnhandledRejection]:", reason?.stack || reason?.message || reason);
 });
 process.on("beforeExit", (code) => {
+  try {
+    checkpointDatabase("TRUNCATE");
+  } catch {}
   console.log(`⚠️ [Daemon beforeExit] 事件循环排空，即将退出，code: ${code}`);
 });
 process.on("exit", (code) => {
+  try {
+    checkpointDatabase("TRUNCATE");
+  } catch {}
   console.log(`🛑 [Daemon Exit] 守护进程退出，exitCode: ${code}`);
 });
 process.on("SIGINT", () => {
@@ -139,8 +159,69 @@ if (process.env.ONEBOT_WS_URL) {
   config.snowLuma.wsUrl = process.env.ONEBOT_WS_URL;
 }
 
+// 微信群双向路由映射表与 ID 生成器
+export const WECHAT_GROUP_MAP = {
+  "道馆馆": 999001
+};
+export const WECHAT_GROUP_NAMES = {
+  999001: "道馆馆"
+};
+
+export function reloadWechatGroupMaps() {
+  try {
+    const groups = getManagedGroups();
+    for (const g of groups) {
+      if (g.platform === "wechat") {
+        WECHAT_GROUP_MAP[g.group_name] = Number(g.group_id);
+        WECHAT_GROUP_NAMES[Number(g.group_id)] = g.group_name;
+      }
+    }
+  } catch {}
+}
+
+export async function syncWechatListenToDaemon(action, roomName) {
+  if (!roomName) return false;
+  try {
+    const resp = await fetch("http://127.0.0.1:34568/listen", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, room: roomName }),
+      signal: AbortSignal.timeout(3000)
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      console.log(`📡 [微信热注册监听同步成功]: ${action} "${roomName}"`, data);
+      return true;
+    }
+  } catch (err) {
+    console.warn(`⚠️ [微信热注册同步提示 (Python 守护服务可能未在运行)]: ${err.message}`);
+  }
+  return false;
+}
+
+function getWeChatGroupId(roomName) {
+  for (const [k, v] of Object.entries(WECHAT_GROUP_MAP)) {
+    if (roomName.includes(k) || k.includes(roomName)) return v;
+  }
+  const id = allocateWechatGroupId(roomName);
+  WECHAT_GROUP_MAP[roomName] = id;
+  WECHAT_GROUP_NAMES[id] = roomName;
+  try {
+    saveManagedGroup(id, roomName, true, "all", "wechat");
+  } catch {}
+  return id;
+}
+
+function getWeChatUserId(senderName) {
+  let hash = 0;
+  const s = String(senderName || "群友");
+  for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) & 0x7fffffff;
+  return 980000 + (hash % 10000);
+}
+
 // 自动初始化托管群组白名单至 SQLite managed_groups
 initManagedGroups(config.snowLuma?.allowedGroupIds || []);
+reloadWechatGroupMaps();
 
 function getSnowLumaHttpBase() {
   if (config.snowLuma?.httpUrl) {
@@ -414,6 +495,41 @@ const internalServer = http.createServer((req, res) => {
   req.on("end", async () => {
     try {
       const data = JSON.parse(body || "{}");
+      if (req.url === "/api/wechat/incoming") {
+        const { room, sender, content } = data;
+        if (!room || !content) {
+          res.writeHead(400).end();
+          return;
+        }
+        const groupId = getWeChatGroupId(room);
+        const senderId = getWeChatUserId(sender);
+        console.log(`📥 [微信群消息进站] 群: ${room}(ID:${groupId}) | 发送人: ${sender} | 内容: "${content}"`);
+        
+        // 确保群组在 managed_groups 白名单中
+        try {
+          saveManagedGroup(groupId, `微信:${room}`, true, "all");
+        } catch {}
+
+        const event = {
+          post_type: "message",
+          message_type: "group",
+          group_id: groupId,
+          user_id: senderId,
+          sender: {
+            card: sender,
+            nickname: sender
+          },
+          raw_message: content,
+          message: [{ type: "text", data: { text: content } }]
+        };
+        handleOneBotMessage(event).catch((err) => {
+          console.error("❌ [微信消息处理异常]:", err);
+        });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true }));
+        return;
+      }
+
       if (req.url === "/send-message") {
         const sessionKey = data.sessionKey || (data.targetType && data.targetId ? `${data.targetType}:${data.targetId}` : null);
         const senderId = data.senderId != null ? Number(data.senderId) : (data.targetType === "private" ? Number(data.targetId) : undefined);
@@ -429,9 +545,11 @@ const internalServer = http.createServer((req, res) => {
         // 在发给 QQ 之前，执行【标签拦截器】过滤与入库
         const cleanedMessage = processOutboundMessage(sessionKey, senderId, data.message, { durationMs, modelName, client });
         let delivered = false;
-        const isSilent = /ACTION:\s*DIVE/i.test(data.message || "") || /\[SILENT\]/i.test(data.message || "");
+        const isSilent = /ACTION:\s*DIVE/i.test(data.message || "") || 
+                         /\[SILENT\]/i.test(data.message || "") ||
+                         /\[action:\s*(?:SILENCE|WAIT|DIVE)/i.test(data.message || "");
         if (cleanedMessage.trim()) {
-          delivered = await sendQQMessage(data.targetType, data.targetId, cleanedMessage);
+          delivered = await sendQQMessage(data.targetType, data.targetId, cleanedMessage, { sessionKey });
 
           if (sessionKey) {
             const s = getOrCreateSession(sessionKey);
@@ -443,7 +561,7 @@ const internalServer = http.createServer((req, res) => {
             console.log(`💬 [持续对话窗口激活] ${sessionKey} | 目标说话人: ${s.activeSpeaker} | 持续至 120 秒后 (已持久化落盘)`);
           }
         } else if (isSilent) {
-          // 角色决策潜水或保持沉默，视为成功处理
+          // 角色决策潜水或保持沉默，视为成功处理 (0 扰民，不推流 QQ)
           delivered = true;
         }
         res.writeHead(200, { "Content-Type": "application/json" });
@@ -526,12 +644,28 @@ function processOutboundMessage(sessionKey, senderId, rawMessage, meta = {}) {
   }
   const fullMeta = { ...meta, reasoningTokens };
 
-  // 1. 先剥离思考标签：<think>...</think>, <thought>...</thought>, <thinking>...</thinking>（支持未闭合截断保护）
-  text = text.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, "")
-             .replace(/<thought>[\s\S]*?(?:<\/thought>|$)/gi, "")
-             .replace(/<thinking>[\s\S]*?(?:<\/thinking>|$)/gi, "");
+  // 1. 优先从全文（含思考标签内部）全局解析轻量社交行动标签：[action:REPLY] 或 [action:SILENCE|理由] 或 [action:WAIT]
+  const actionTagRegex = /[\[【]action:\s*([a-zA-Z0-9_-]+)(?:\s*\|\s*([^\]】]*))?[\]】]/i;
+  const actionTagMatch = actionTagRegex.exec(text);
+  let inlineAction = null;
+  let inlineActionReason = "";
+  if (actionTagMatch) {
+    inlineAction = actionTagMatch[1].toUpperCase();
+    inlineActionReason = (actionTagMatch[2] || "").trim();
+    console.log(`🧠 [轻量社交行动] Action: ${inlineAction}${inlineActionReason ? ` (理由: ${inlineActionReason})` : ""}`);
+    eventBus.emit("broadcast", {
+      type: "social_decision",
+      data: {
+        sessionKey,
+        senderId,
+        action: inlineAction,
+        reason: inlineActionReason,
+        rawDecision: actionTagMatch[0]
+      }
+    });
+  }
 
-  // 2. 提取并持久化跨会话切片记忆：<MEMORY_SNAPSHOT>...</MEMORY_SNAPSHOT>（必须在 XML 标签清洗前完成）
+  // 2. 提取并持久化跨会话切片记忆：<MEMORY_SNAPSHOT>...</MEMORY_SNAPSHOT>
   const memRegex = /<MEMORY_SNAPSHOT>([\s\S]*?)<\/MEMORY_SNAPSHOT>/i;
   const memMatch = memRegex.exec(text);
   if (memMatch && memMatch[1]) {
@@ -541,29 +675,29 @@ function processOutboundMessage(sessionKey, senderId, rawMessage, meta = {}) {
       console.log(`💾 [记忆切片归档] ${sessionKey} 记忆已落盘: "${snapshot}"`);
     }
   }
-  text = text.replace(/<MEMORY_SNAPSHOT>[\s\S]*?<\/MEMORY_SNAPSHOT>/gi, "");
 
-  // 3. 全局拦截好感度标签：[af:+3|理由] 或 [af:-10|冒犯]（在提取 reply 之前解析，无论置于决策槽还是回复槽均可入库）
-  const afRegex = /\[af:([+-]?\d+)(?:\|([^\]]*))?\]/g;
+  // 3. 全局拦截好感度标签：[af:+2|理由] 或 [af:-2|冒犯]（单次变动严格限制在 [-2, +2]）
+  const afRegex = /[\[【]af:\s*([+-]?\d+)\s*(?:\|\s*([^\]】]*))?[\]】]/gi;
   let afMatch;
   while ((afMatch = afRegex.exec(text)) !== null) {
-    const delta = parseInt(afMatch[1], 10);
-    const reason = afMatch[2] || "";
-    if (senderId && !isNaN(delta)) {
-      const result = modifyUserAffinity(senderId, delta, reason);
-      console.log(`❤️ [好感度变动] 用户(${senderId}) 好感 ${delta > 0 ? "+" + delta : delta} -> ${result.newPoints} (${result.newLevel}) [原因: ${result.reason}]`);
+    const rawDelta = parseInt(afMatch[1], 10);
+    const reason = (afMatch[2] || "").trim();
+    if (senderId && Number(senderId) > 0 && !isNaN(rawDelta)) {
+      const delta = Math.max(-2, Math.min(2, rawDelta));
+      const result = modifyUserAffinity(Number(senderId), delta, reason);
+      console.log(`❤️ [好感度变动] 用户(${senderId}) 好感 ${delta > 0 ? "+" + delta : delta}${rawDelta !== delta ? ` (原始 ${rawDelta > 0 ? "+" + rawDelta : rawDelta} 被限制在 [-2, +2])` : ""} -> ${result.newPoints} (${result.newLevel}) [原因: ${result.reason}]`);
       eventBus.emit("broadcast", {
         type: "affinity_change",
-        data: { userId: senderId, delta, ...result }
+        data: { userId: Number(senderId), delta, ...result }
       });
     }
   }
 
   // 4. 全局拦截时空转移标签：[state:地点|活动|现场细节]
-  const stateRegex = /\[state:([^\|\]]+)(?:\|([^\|\]]+))?(?:\|([^\]]+))?\]/g;
+  const stateRegex = /[\[【]state:\s*([^\|\]】]+?)\s*(?:\|\s*([^\|\]】]+?)\s*)?(?:\|\s*([^\]】]+?)\s*)?[\]】]/gi;
   let stateMatch;
   while ((stateMatch = stateRegex.exec(text)) !== null) {
-    const location = stateMatch[1].trim();
+    const location = (stateMatch[1] || "").trim();
     const action = (stateMatch[2] || "").trim();
     const detail = (stateMatch[3] || "").trim();
     updateCharacterLocation(location, action, detail);
@@ -576,16 +710,24 @@ function processOutboundMessage(sessionKey, senderId, rawMessage, meta = {}) {
   }
 
   // 5. 全局拦截群聊流行黑话标签：[slang:词|含义]
-  const slangRegex = /\[slang:([^\|\]]+)(?:\|([^\]]*))?\]/g;
+  const slangRegex = /[\[【]slang:\s*([^\|\]】]+?)\s*(?:\|\s*([^\]】]*?)\s*)?[\]】]/gi;
   let slangMatch;
   while ((slangMatch = slangRegex.exec(text)) !== null) {
-    const word = slangMatch[1].trim();
+    const word = (slangMatch[1] || "").trim();
     const meaning = (slangMatch[2] || "").trim();
     recordSlang(word, meaning);
     console.log(`📚 [黑话顺风车学习] 发现新用语: "${word}" | 含义: "${meaning}"`);
   }
 
-  // 6. 拦截第一层社交决策槽：<social_decision>...</social_decision>
+  // 6. 安全剥离思考标签：<think>...</think>, <thought>...</thought>, <thinking>...</thinking>（支持未闭合截断保护）
+  text = text.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, "")
+             .replace(/<thought>[\s\S]*?(?:<\/thought>|$)/gi, "")
+             .replace(/<thinking>[\s\S]*?(?:<\/thinking>|$)/gi, "");
+
+  text = text.replace(/<MEMORY_SNAPSHOT>[\s\S]*?<\/MEMORY_SNAPSHOT>/gi, "");
+  text = text.replace(actionTagRegex, "");
+
+  // 6.1 拦截第一层社交决策槽：<social_decision>...</social_decision>
   let decisionAction = null;
   let diveMinutes = 0;
   const decisionRegex = /<social_decision>([\s\S]*?)<\/social_decision>/i;
@@ -615,6 +757,15 @@ function processOutboundMessage(sessionKey, senderId, rawMessage, meta = {}) {
     });
   }
 
+  // 标签优先级映射与统一决策收敛
+  if (inlineAction === "SILENCE" || inlineAction === "WAIT") {
+    decisionAction = "SILENCE";
+  } else if (inlineAction === "REPLY") {
+    if (!decisionAction) decisionAction = "REPLY";
+  } else if (inlineAction === "DIVE") {
+    decisionAction = "DIVE";
+  }
+
   // 7. 提取第二层纯净声音槽：<reply>...</reply>（兼容 <char_reply> 与旧版 <tomoko_reply>）
   const replyRegex = /<(?:reply|char_reply|tomoko_reply)>([\s\S]*?)<\/(?:reply|char_reply|tomoko_reply)>/i;
   const replyMatch = replyRegex.exec(text);
@@ -628,20 +779,20 @@ function processOutboundMessage(sessionKey, senderId, rawMessage, meta = {}) {
   // 8. 安全剥离 XML/HTML 标签，避免误吞类似 a < b, 1 < 2 等数学比较符号（不使用 (>|$) 模式）
   text = text.replace(/<\/?[a-zA-Z][a-zA-Z0-9_:-]*(?:\s+[^>]*)?>/g, "");
 
-  // 9. 判断是否潜水或已读放空 (DIVE 或 [SILENT])
-  const isSilentTurn = decisionAction === "DIVE" || /\[SILENT\]/i.test(text);
+  // 9. 判断是否潜水或已读放空 (DIVE, SILENCE, WAIT 或 [SILENT])
+  const isSilentTurn = decisionAction === "DIVE" || decisionAction === "SILENCE" || inlineAction === "SILENCE" || inlineAction === "WAIT" || /\[SILENT\]/i.test(text);
   if (isSilentTurn) {
-    const sleepMins = diveMinutes || (Math.floor(Math.random() * 4) + 3);
-    if (sessionKey) {
+    const sleepMins = decisionAction === "DIVE" ? (diveMinutes || (Math.floor(Math.random() * 4) + 3)) : 0;
+    if (sessionKey && sleepMins > 0) {
       const session = getOrCreateSession(sessionKey);
       session.sleepUntil = Date.now() + sleepMins * 60000;
       session.activeUntil = 0; // 潜水时清空活跃窗口
       saveSessionState(sessionKey, session);
     }
     const persona = getActivePersona(config.antigravity?.agentPreset);
-    console.log(`😴 [${persona.displayName}进入潜水放空] 本地锁定至: ${new Date(Date.now() + sleepMins * 60000).toLocaleTimeString()} (${sleepMins}分钟) | 期间群内闲聊 0 Token 静默拦截`);
+    console.log(`😴 [${persona.displayName}${decisionAction === "SILENCE" || inlineAction === "SILENCE" ? "选择静默不发言" : "进入潜水放空"}]${sleepMins > 0 ? ` 本地锁定至: ${new Date(Date.now() + sleepMins * 60000).toLocaleTimeString()} (${sleepMins}分钟) | 期间群内闲聊 0 Token 静默拦截` : " (0 扰民，不推流 QQ)"}`);
 
-    // 记录潜水交互 Token
+    // 记录潜水/沉默交互 Token
     recordOutboundTokenUsage(sessionKey, rawMessage, fullMeta);
     return ""; // 返回空字符串，QQ 群不发送任何消息
   }
@@ -649,10 +800,18 @@ function processOutboundMessage(sessionKey, senderId, rawMessage, meta = {}) {
   // 10. 清理回复中可能残留的内联标签，防止泄漏到 QQ
   text = text.replace(afRegex, "")
              .replace(stateRegex, "")
-             .replace(slangRegex, "");
+             .replace(slangRegex, "")
+             .replace(/[\[【]action:\s*[^\]】]+[\]】]/gi, "");
 
   // 11. 记录 Token 与字符用量双轨统计
   recordOutboundTokenUsage(sessionKey, rawMessage, fullMeta);
+
+  // 12. 若是管理员对话，更新 Tulpa 情境记忆中的回复切片
+  if (sessionKey && senderId && (config.snowLuma.adminQqIds || []).includes(Number(senderId))) {
+    try {
+      updateLatestTulpaEpisodeReply(sessionKey, text.trim());
+    } catch {}
+  }
 
   return text.trim();
 }
@@ -716,6 +875,29 @@ function connectSnowLuma() {
 
 // 单条底层发送器（支持 HTTP 重试 + WebSocket 兜底）
 async function sendSingleMessage(targetType, targetId, text) {
+  // 微信群静默隔离发送拦截
+  const wechatRoomName = WECHAT_GROUP_NAMES[targetId];
+  if (wechatRoomName) {
+    try {
+      const wxRes = await fetch("http://127.0.0.1:34568/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target: wechatRoomName, message: text })
+      });
+      const wxData = await wxRes.json();
+      if (wxData.success) {
+        console.log(`📤 [微信消息已静默送达群] 目标: ${wechatRoomName} | 内容: "${text}"`);
+        return true;
+      } else {
+        console.warn(`⚠️ [微信发送未通过]:`, wxData);
+        return false;
+      }
+    } catch (err) {
+      console.warn(`⚠️ [微信网关通信异常]:`, err.message);
+      return false;
+    }
+  }
+
   const isGroup = targetType === "group";
   const action = isGroup ? "send_group_msg" : "send_private_msg";
   const url = `${getSnowLumaHttpBase()}/${action}`;
@@ -795,37 +977,74 @@ async function sendSingleMessage(targetType, targetId, text) {
   return sentSuccess;
 }
 
-// 多条仿生消息发送总调度（按真实换行或 \\n 切分，最多分 3 批发送，超出则合并，带 800ms~1800ms 随机打字延时）
-async function sendQQMessage(targetType, targetId, message) {
-  if (!message || !message.trim()) return false;
-
-  const rawSegments = message
+function splitIntoBubbles(message, maxBubbles = 3) {
+  if (!message || !message.trim()) return [];
+  // 1. 先按显式换行切分
+  let lines = message
     .split(/\r?\n+|\\n/)
     .map(s => s.trim())
     .filter(Boolean);
 
-  if (rawSegments.length === 0) return false;
-
-  let segments = [];
-  if (rawSegments.length <= 3) {
-    segments = rawSegments;
-  } else {
-    segments = [
-      rawSegments[0],
-      rawSegments[1],
-      rawSegments.slice(2).join("\n")
-    ];
+  // 2. 若换行只有 1 段，但包含多个以标点结尾的完整句子，尝试按句子标点切分为 1~3 个气泡
+  if (lines.length === 1 && lines[0].length > 15) {
+    const sentenceParts = lines[0]
+      .match(/[^。！？!\?]+[。！？!\?]+|[^。！？!\?]+$/g)
+      ?.map(s => s.trim())
+      .filter(Boolean);
+    if (sentenceParts && sentenceParts.length > 1 && sentenceParts.length <= maxBubbles) {
+      lines = sentenceParts;
+    } else if (sentenceParts && sentenceParts.length > maxBubbles) {
+      lines = [
+        sentenceParts[0],
+        sentenceParts[1],
+        sentenceParts.slice(2).join("")
+      ];
+    }
   }
+
+  // 3. 严格限制最多 3 批气泡，超出部分合并进第 3 批
+  if (lines.length <= maxBubbles) {
+    return lines;
+  }
+  return [
+    lines[0],
+    lines[1],
+    lines.slice(2).join("\n")
+  ];
+}
+
+// 多条仿生消息发送总调度（按真实换行或句子标点切分为 1~3 个气泡，带打字间隔与在途打断检查）
+async function sendQQMessage(targetType, targetId, message, options = {}) {
+  if (!message || !message.trim()) return false;
+
+  const segments = splitIntoBubbles(message, 3);
+  if (segments.length === 0) return false;
+
+  const sessionKey = options.sessionKey || `${targetType}:${targetId}`;
+  let lastCheckedId = getLastChatMessageId(sessionKey);
+  const sendFn = options.sendFn || sendSingleMessage;
 
   let allSuccess = true;
   for (let i = 0; i < segments.length; i++) {
+    // 气泡 2 或 3 发送前，检查 SQLite chat_messages 是否有新真人插话 (in-flight interruption)
+    if (i > 0 && options.allowInterruption !== false) {
+      const interrupted = hasHumanInterrupted(sessionKey, lastCheckedId);
+      if (interrupted) {
+        console.log(`⚡ [气泡打断/In-flight Cancellation] 会话: ${sessionKey} 检测到用户(${interrupted.sender_name || interrupted.sender_id})插话 ("${interrupted.message_text}")，中断取消剩余 ${segments.length - i} 条待发气泡`);
+        break;
+      }
+    }
+
+    // 更新基准检查点：已确认到当前时刻无打断，基准水位推进至当前最新 ID
+    lastCheckedId = getLastChatMessageId(sessionKey);
+
     const seg = segments[i];
-    const ok = await sendSingleMessage(targetType, targetId, seg);
+    const ok = await sendFn(targetType, targetId, seg);
     if (!ok) allSuccess = false;
 
-    // 如果还有下一句，模拟真实人类打字间隔（800ms ~ 1800ms）
+    // 如果还有下一句，模拟真实人类打字间隔（默认 800ms ~ 1800ms，测试可传入 options.typingDelayMs）
     if (i < segments.length - 1) {
-      const delay = Math.floor(Math.random() * 1000) + 800;
+      const delay = options.typingDelayMs ?? (Math.floor(Math.random() * 1000) + 800);
       await new Promise(r => setTimeout(r, delay));
     }
   }
@@ -864,7 +1083,9 @@ function isDirectedAtAi(text, isContextEligible = false) {
   return false;
 }
 
-async function dispatchBatch(sessionKey) {
+const UNFINISHED_REGEX = /(?:我跟你说|跟你讲|你知道吗|等一下|等下|等等|稍等|等会|等会儿|其实|但是|不过|而且|还有|另外|然后|因为|就是说|比如|所以|结果|：|:|[，,、]|(?:\.{2,}|…+))[啊呀哦吧呢哈呐]*(?:一?下[子儿]?)?[\s，,。\.\?!？！~～…]*$/;
+
+async function dispatchBatch(sessionKey, options = {}) {
   try {
     const batch = batchBuffers.get(sessionKey);
     if (!batch || batch.messages.length === 0) {
@@ -876,6 +1097,25 @@ async function dispatchBatch(sessionKey) {
       batchBuffers.delete(sessionKey);
       return;
     }
+
+    // 检查半句话未完结等待 (Unfinished Turn Waiting)
+    const latestMsg = batch.messages[batch.messages.length - 1];
+    const latestText = (latestMsg?.text || "").trim();
+    const isUnfinished = UNFINISHED_REGEX.test(latestText);
+
+    if (isUnfinished && !options.force && !batch.extendedForUnfinished) {
+      const waitMs = config.chatBehavior?.unfinishedWaitMs ?? 2500;
+      batch.extendedForUnfinished = true;
+      console.log(`⏳ [半句话等待] 会话: ${sessionKey} 最新消息疑似未说完 ("${latestText}")，本地延长防抖等待 ${waitMs}ms，避免抢答浪费 Token`);
+      if (batch.debounceTimer) clearTimeout(batch.debounceTimer);
+      batch.debounceTimer = setTimeout(() => {
+        dispatchBatch(sessionKey, { force: true }).catch(err => {
+          console.error(`❌ [dispatchBatch Unfinished Timer 异常] 会话: ${sessionKey}:`, err?.stack || err?.message || err);
+        });
+      }, waitMs);
+      return;
+    }
+
     if (batch.debounceTimer) clearTimeout(batch.debounceTimer);
     if (batch.maxWaitTimer) clearTimeout(batch.maxWaitTimer);
     if (batch.timer) clearTimeout(batch.timer);
@@ -897,15 +1137,22 @@ async function dispatchBatch(sessionKey) {
 
     const persona = getActivePersona(config.antigravity?.agentPreset);
 
-    // 1. 合并批处理短句与图片
-    const aggregatedText = batch.messages.map(m => m.text).join("，");
+    // 1. 合并批处理短句与图片（带发言人明确标注，防止群友发言混淆与好感度误扣）
+    const isPatrol = Boolean(batch.isPatrolWake || Number(senderId) === 0);
+    const speakerLabel = isGroup ? "群友" : "用户";
+    const aggregatedText = batch.messages
+      .map(m => `[${speakerLabel}(${m.senderId ?? senderId})]: ${m.text}`)
+      .join("\n");
     const aggregatedImages = (batch.images || []).slice(0, 3); // 最多保留 3 张
 
     // 2. 提取好感度与时空信息
-    const aff = getUserAffinity(senderId);
+    // 定时巡逻看群使用中立初始基准，绝不查询或影响管理员及任何特定用户的好感度
+    const aff = isPatrol 
+      ? { user_id: 0, affinity_points: 30, level_name: "初识", last_reason: "日常看群巡逻" }
+      : getUserAffinity(senderId);
     const charState = getCharacterState();
 
-    console.log(`🤖 [${persona.displayName} 滑动窗口聚合完成，推入 Antigravity] 会话: ${sessionKey} | 合并条数: ${batch.messages.length} | 图片数: ${aggregatedImages.length} | 说话人(${senderId}): "${aggregatedText}" | 好感度: [${aff.affinity_points}(${aff.level_name})]`);
+    console.log(`🤖 [${persona.displayName} 滑动窗口聚合完成，推入 Antigravity] 会话: ${sessionKey} | 合并条数: ${batch.messages.length} | 图片数: ${aggregatedImages.length} | 说话人(${senderId}):\n${aggregatedText}\n | 好感度: [${aff.affinity_points}(${aff.level_name})]`);
 
     // 3. 构建三层动态架构提示词 (底层协议 + 人设范式 + 好感矩阵/时空身位)
     const systemPrompt = buildSystemPrompt(persona.name, aff.affinity_points, {
@@ -927,9 +1174,15 @@ async function dispatchBatch(sessionKey) {
       prompt += `[群聊最近滚动真实上下文（背景参考，即使刚才未 @ 你也一直在发生）：\n${recentHistory}\n]\n`;
     }
 
-    // 5. 注入本群流行黑话参考
+    // 5. 注入本群流行黑话参考 (结合本地纯算法 group_slangs 与全局 slangs，优先高频出现词)
     const slangsCount = config.chatBehavior?.topSlangsCount ?? 5;
-    const slangs = getTopSlangs(slangsCount);
+    let slangs = isGroup ? getTopGroupSlangs(targetId, slangsCount, 2) : [];
+    if (!slangs || slangs.length === 0) {
+      slangs = isGroup ? getTopGroupSlangs(targetId, slangsCount, 1) : [];
+    }
+    if (!slangs || slangs.length === 0) {
+      slangs = getTopSlangs(slangsCount);
+    }
     if (slangs && slangs.length > 0) {
       prompt += `[本群流行网络用语参考（自然使用，无需生搬硬套）：\n` +
         slangs.map(s => `• ${s.word}${s.meaning ? ": " + s.meaning : ""}`).join("\n") +
@@ -971,18 +1224,31 @@ async function dispatchBatch(sessionKey) {
       `槽 2 <reply>（真正发到群里的纯净声音）：\n` +
       `• 若第一槽决策为 DIVE：本槽必须直接输出 [SILENT]，系统将零 Token 睡眠静默拦截，绝不打扰群友。\n` +
       `• 若第一槽决策为 REPLY 或 INTERJECT：本槽输出契合你人设的口语短句（1~15字，去AI味，中文不要敲空格断句）。想分条连发时可直接换行（最多2~3行小短句，系统会自动带打字间隔分条发出）。在末尾可附带 <MEMORY_SNAPSHOT>记忆摘要</MEMORY_SNAPSHOT>。\n\n` +
-      (batch.isPatrolWake 
+      (isPatrol 
         ? `【定时看群感知】：你刚忙完手头的事顺便看了一眼群消息，群友并没有特意叫你。你可以根据上面最近滚动上下文自主决定：是继续潜水沉默（DIVE），还是随手接一句/跟一句复读/吐槽冒泡（INTERJECT）。`
-        : `来自群友(${senderId})的最新发言: "${aggregatedText}"`);
+        : `来自${speakerLabel}(${senderId})的最新发言：\n${aggregatedText}`);
 
-    // 8. 写入 Antigravity 本地收件箱（方案 B 核心：SQLite 原子队列 + 文件同步）
+    // 7.5 查询 Tulpa 情境记忆片段（0 API 成本，仅在尾部追加 Few-shot 范例，严格保护 97% KV Cache 前缀命中率）
+    try {
+      const querySample = batch.messages.map(m => m.text).join(" ");
+      const matchedEpisodes = searchTulpaEpisodes(querySample, 2);
+      if (matchedEpisodes && matchedEpisodes.length > 0) {
+        prompt += `\n\n[历史真实高光对话参考（Tulpa 经验情境，仅供语气与交互参考，切勿机械复读）：\n` +
+          matchedEpisodes.map((ep, idx) => `• 范例 ${idx + 1}：\n  问：${ep.user_message}\n  答：${ep.reply_message || "（自然互动）"}`).join("\n") +
+          `\n]`;
+      }
+    } catch (epErr) {
+      // 容错兜底
+    }
+
+    // 8. 写入 Antigravity 本地收件箱（SQLite inbox_queue 原子队列）
     const inboxPayload = {
       id: Date.now(),
       targetType: batch.targetType,
       targetId,
       sessionKey,
-      senderId,
-      userText: aggregatedText,
+      senderId: isPatrol ? 0 : senderId,
+      userText: isPatrol ? "[日常看群]" : aggregatedText,
       images: aggregatedImages,
       charState,
       aff,
@@ -995,16 +1261,6 @@ async function dispatchBatch(sessionKey) {
       saveSessionState(sessionKey, session);
     }
     pushInboxMessage(inboxPayload);
-
-    const inboxPath = path.resolve(PROJECT_ROOT, "data/inbox.json");
-    let inboxList = [];
-    if (fs.existsSync(inboxPath)) {
-      try { inboxList = JSON.parse(fs.readFileSync(inboxPath, "utf-8")); } catch {}
-    }
-    inboxList.push(inboxPayload);
-    try {
-      fs.writeFileSync(inboxPath, JSON.stringify(inboxList, null, 2), "utf-8");
-    } catch {}
 
     // 3.4 消息已进入 SQLite inbox_queue 原子队列，等待 Antigravity 伴聊大脑 (IDE Companion Skill) 消费响应
     console.log(`📥 [InboxQueue] 聚合消息已推入队列 (${sessionKey}) | 当前会话轮次: ${session?.turnCount || 1} | 等待 IDE 伴聊大脑响应`);
@@ -1083,31 +1339,72 @@ async function handleOneBotMessage(event) {
   userText = userText.trim();
   const effectiveCommandText = userText || (detectedImages.length > 0 ? "[图片]" : rawText);
 
-  // 异步下载图片至本地 (按群组隔离缓存)
-  const imageGroupId = isGroup ? targetId : `private:${targetId}`;
-  const downloadedImages = [];
-  for (const img of detectedImages) {
-    try {
-      const localPath = await ensureDownloadedImage(img, imageGroupId);
-      if (localPath) {
-        const fname = path.basename(localPath);
-        downloadedImages.push({
-          path: localPath,
-          file: fname,
-          url: `/images/${fname}`
-        });
-      }
-    } catch (err) {
-      console.warn("[Image] 下载图片异常:", err.message);
-    }
-  }
-
   const persona = getActivePersona(config.antigravity?.agentPreset);
   const cleanSenderName = (event.sender?.card || event.sender?.nickname || "").trim();
   const safeSenderName = cleanSenderName || (senderId ? `群友(${senderId})` : "群友");
 
-  // 3.1.0 无论是否 @ 机器人，所有真实发言实时记入 SQLite 滚动胶卷（单条防刷屏截断至150字，含图片附件）
-  recordChatMessage(sessionKey, senderId, safeSenderName, effectiveCommandText, false, persona.displayName, downloadedImages);
+  // 3.1.0 尽早实时记入 SQLite 滚动胶卷（确保文字消息瞬时入库，不被图片网络下载耗时阻塞）
+  const insertedMsgId = recordChatMessage(sessionKey, senderId, safeSenderName, effectiveCommandText, false, persona.displayName, []);
+
+  // 本地纯算法群聊流行黑话词频统计 (0 Token 消耗)
+  if (isGroup && userText) {
+    try {
+      trackGroupSlangFrequency(targetId, userText);
+    } catch {}
+  }
+
+  // 管理员真实对话切片记录 (Tulpa Episodic Memory)
+  if (isAdmin && effectiveCommandText && !effectiveCommandText.startsWith("/")) {
+    try {
+      recordTulpaEpisode({
+        sessionKey,
+        userId: senderId,
+        userName: safeSenderName,
+        userMessage: effectiveCommandText,
+        replyMessage: ""
+      });
+    } catch {}
+  }
+
+  // 异步并发下载图片至本地 (按群组隔离缓存，Promise.allSettled 并发 + 6000ms 超时保护)
+  const imageGroupId = isGroup ? targetId : `private:${targetId}`;
+  let downloadedImages = [];
+  if (detectedImages.length > 0) {
+    const IMAGE_DOWNLOAD_TIMEOUT_MS = 6000;
+    const downloadTasks = detectedImages.map(async (img) => {
+      let timer;
+      try {
+        const downloadPromise = ensureDownloadedImage(img, imageGroupId);
+        const timeoutPromise = new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error("Image download timeout")), IMAGE_DOWNLOAD_TIMEOUT_MS);
+        });
+        const localPath = await Promise.race([downloadPromise, timeoutPromise]);
+        if (localPath) {
+          const fname = path.basename(localPath);
+          return {
+            path: localPath,
+            file: fname,
+            url: `/images/${fname}`
+          };
+        }
+      } catch (err) {
+        console.warn(`[Image] 并发下载图片异常: ${err.message}`);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+      return null;
+    });
+
+    const results = await Promise.allSettled(downloadTasks);
+    downloadedImages = results
+      .filter(r => r.status === "fulfilled" && r.value)
+      .map(r => r.value);
+
+    // 图片并发下载完成后，若成功获取到图片，回填更新到已入库记录中
+    if (downloadedImages.length > 0 && insertedMsgId) {
+      updateChatMessageImages(insertedMsgId, downloadedImages);
+    }
+  }
 
   
   // 3.1.1 角色感兴趣的话题关键词列表（命中时高概率探头插嘴）
@@ -1226,29 +1523,67 @@ async function handleOneBotMessage(event) {
     return;
   }
 
-  // 3.3 群聊判定：未决定触发 AI 且当前会话无正在缓冲中的批处理时，消息已在 3.1.0 写入 SQLite，在此静默结束
+  // 3.3 群聊缓冲与隔离判定
+  const debounceMs = config.chatBehavior?.debounceMs ?? 2500;
+  const maxWaitMs = (config.chatBehavior?.silentBufferSeconds ?? config.daemon?.silentBufferLimit ?? 8) * 1000;
+
+  const triggerDispatch = (options = {}) => {
+    const b = batchBuffers.get(sessionKey);
+    if (b) {
+      if (b.debounceTimer) clearTimeout(b.debounceTimer);
+      if (b.maxWaitTimer && options.force) clearTimeout(b.maxWaitTimer);
+      if (b.timer && options.force) clearTimeout(b.timer);
+    }
+    dispatchBatch(sessionKey, options).catch((err) => {
+      console.error(`❌ [dispatchBatch Timer 异常] 会话: ${sessionKey}:`, err?.stack || err?.message || err);
+    });
+  };
+
+  if (batchBuffers.has(sessionKey)) {
+    const existingBatch = batchBuffers.get(sessionKey);
+    const primarySender = existingBatch.primarySenderId || existingBatch.senderId;
+    const isSameUser = String(senderId) === String(primarySender);
+
+    if (existingBatch.isPatrolWake) {
+      // 当前是定时看群巡逻缓冲
+      if (shouldTriggerAI) {
+        // 收到真实用户触发消息，取消定时看群批次，由当前用户接管
+        console.log(`🎯 [巡逻让位] 会话: ${sessionKey} 收到真实用户(${senderId})触发消息，取消定时看群批次`);
+        if (existingBatch.debounceTimer) clearTimeout(existingBatch.debounceTimer);
+        if (existingBatch.maxWaitTimer) clearTimeout(existingBatch.maxWaitTimer);
+        if (existingBatch.timer) clearTimeout(existingBatch.timer);
+        batchBuffers.delete(sessionKey);
+        // 继续向下建立当前真实用户的批处理
+      } else {
+        // 仅是其他群友普通发言，已在 3.1.0 记入 SQLite，不混入巡逻批次，也不重置定时器
+        return;
+      }
+    } else if (!isSameUser) {
+      // 正在缓冲另一位用户的批处理：
+      if (isDirectMention) {
+        // 其他群友直接提及(@)机器人，立即提交前序用户的批处理，并为当前用户开启独立批处理
+        console.log(`🔀 [批处理分离] 群友(${senderId}) 直接提及机器人，提前提交前序用户(${primarySender})的缓冲批次`);
+        if (existingBatch.debounceTimer) clearTimeout(existingBatch.debounceTimer);
+        if (existingBatch.maxWaitTimer) clearTimeout(existingBatch.maxWaitTimer);
+        if (existingBatch.timer) clearTimeout(existingBatch.timer);
+        await dispatchBatch(sessionKey, { force: true });
+        // 此时前序批次已 dispatch 并从 batchBuffers 删除，继续向下为当前用户开启新批次
+      } else {
+        // 其他群友普通路过发言，严禁追加进当前用户的批处理缓冲，严禁重置防抖计时器
+        console.log(`🔇 [群聊防抖隔离] 群友(${senderId}) 在用户(${primarySender})缓冲期间发言，已记入 SQLite，不混入批次`);
+        return;
+      }
+    }
+  }
+
+  // 群聊判定：未决定触发 AI 且当前会话无正在缓冲中的批处理时，消息已在 3.1.0 写入 SQLite，在此静默结束
   if (isGroup && !shouldTriggerAI && !batchBuffers.has(sessionKey)) {
     return;
   }
 
   // 🌟 3.4 进入自适应滑动窗口防抖缓冲 (debounce 2.5s + maxWait 8s)
-  const debounceMs = config.chatBehavior?.debounceMs ?? 2500;
-  const maxWaitMs = (config.chatBehavior?.silentBufferSeconds ?? config.daemon?.silentBufferLimit ?? 8) * 1000;
-
-  const triggerDispatch = () => {
-    const b = batchBuffers.get(sessionKey);
-    if (b) {
-      if (b.debounceTimer) clearTimeout(b.debounceTimer);
-      if (b.maxWaitTimer) clearTimeout(b.maxWaitTimer);
-      if (b.timer) clearTimeout(b.timer);
-    }
-    dispatchBatch(sessionKey).catch((err) => {
-      console.error(`❌ [dispatchBatch Timer 异常] 会话: ${sessionKey}:`, err?.stack || err?.message || err);
-    });
-  };
-
   if (!batchBuffers.has(sessionKey)) {
-    const maxWaitTimer = setTimeout(triggerDispatch, maxWaitMs);
+    const maxWaitTimer = setTimeout(() => triggerDispatch({ force: true }), maxWaitMs);
 
     batchBuffers.set(sessionKey, {
       messages: [],
@@ -1269,24 +1604,18 @@ async function handleOneBotMessage(event) {
 
   const batch = batchBuffers.get(sessionKey);
   batch.messages.push({ senderId, text: effectiveCommandText });
+  batch.extendedForUnfinished = false; // 用户持续输入新句子，重置未完结等待标记
   for (const di of downloadedImages) {
     if (!batch.images.some(i => i.path === di.path)) {
       batch.images.push(di);
     }
   }
 
-  // 保持 primarySenderId，后续群友发言不篡改归属人，除非直接 @bot 或显式点名
-  if (isDirectMention) {
-    batch.senderId = senderId;
-    batch.primarySenderId = senderId;
-    batch.isDirectMention = true;
-  }
-
-  // 若有人持续打字刷屏，重置 2.5s 防抖计时器；maxWait 计时器不重置，8s 封顶强制截断发送
+  // 同用户持续打字刷屏，重置 2.5s 防抖计时器；maxWait 计时器不重置，8s 封顶强制截断发送
   if (batch.debounceTimer) clearTimeout(batch.debounceTimer);
   batch.debounceTimer = setTimeout(triggerDispatch, debounceMs);
 
-  console.log(`📦 [自适应滑动窗口缓冲中] ${sessionKey} 已收集 ${batch.messages.length} 条碎片短句，${batch.images.length} 张图片 (静默防抖: ${debounceMs}ms / 封顶: ${maxWaitMs}ms)...`);
+  console.log(`📦 [自适应滑动窗口缓冲中] ${sessionKey} 已收集用户(${batch.primarySenderId}) ${batch.messages.length} 条碎片短句，${batch.images.length} 张图片 (静默防抖: ${debounceMs}ms / 封顶: ${maxWaitMs}ms)...`);
   } catch (err) {
     console.error(`❌ [handleOneBotMessage 异常]:`, err?.stack || err?.message || err);
   }
@@ -1458,13 +1787,14 @@ function startPatrolScheduler() {
 
         console.log(`👀 [定时看群引擎触发] 角色随机扫了一眼群 ${groupId} 的最新动态，进入自主决策...`);
 
-        // 打包一次看群心跳批次
-        const dummySenderId = config.snowLuma.adminQqIds?.[0] || 10000;
+        // 打包一次看群心跳批次（使用系统专用 sender ID 0，避免误伤或读取管理员好感度）
+        const systemSenderId = 0;
         batchBuffers.set(sessionKey, {
-          messages: [{ senderId: dummySenderId, text: "[日常看群]" }],
+          messages: [{ senderId: systemSenderId, text: "[日常看群]" }],
           targetType: "group",
           targetId: groupId,
-          senderId: dummySenderId,
+          senderId: systemSenderId,
+          primarySenderId: systemSenderId,
           triggerReason: "定时随机看群",
           isDirectMention: false,
           isContinuousChat: false,
@@ -1639,6 +1969,8 @@ const daemonApi = {
   },
   getLogBuffer: () => logBuffer,
   cleanImages: (maxKeep = (config.chatBehavior?.maxImages ?? 15)) => cleanImagesFifo(maxKeep),
+  reloadWechatGroupMaps: () => reloadWechatGroupMaps(),
+  syncWechatGroup: async (action, roomName) => await syncWechatListenToDaemon(action, roomName),
   broadcastEvent: (type, data) => eventBus.emit("broadcast", { type, data })
 };
 
@@ -1665,22 +1997,32 @@ if (isMain) {
   }, 60000);
   if (cleanupInterval.unref) cleanupInterval.unref();
 
-  // 同步重置 fallback 遗留 inbox.json 文件
+  // 清理遗留废弃的 inbox.json 文件，系统已全面收敛至 SQLite inbox_queue 原子队列
   const inboxPath = path.resolve(PROJECT_ROOT, "data/inbox.json");
   if (fs.existsSync(inboxPath)) {
-    try { fs.writeFileSync(inboxPath, "[]", "utf-8"); } catch {}
+    try { fs.unlinkSync(inboxPath); } catch {}
   }
 
   // 启动自愈与自动归档：每日定期清理超过 30 天的历史流水日志 (保留好感度与核心记忆)
   try {
     pruneOldRecords(30);
+    checkpointDatabase("TRUNCATE");
   } catch {}
   const dailyPruneInterval = setInterval(() => {
     try {
       pruneOldRecords(30);
+      checkpointDatabase("TRUNCATE");
     } catch {}
   }, 24 * 60 * 60 * 1000);
   if (dailyPruneInterval.unref) dailyPruneInterval.unref();
+
+  // 定期 WAL Checkpoint 维护：每小时截断一次 WAL 文件，确保轻量紧凑
+  const hourlyCheckpointInterval = setInterval(() => {
+    try {
+      checkpointDatabase("TRUNCATE");
+    } catch {}
+  }, 60 * 60 * 1000);
+  if (hourlyCheckpointInterval.unref) hourlyCheckpointInterval.unref();
 
   internalServer.listen(config.daemon.internalHttpPort, "127.0.0.1", () => {
     console.log(`[Bridge Daemon] 内部通信网关已就绪，端口: 127.0.0.1:${config.daemon.internalHttpPort}`);
@@ -1715,5 +2057,9 @@ export {
   cleanImagesFifo,
   createWebServer,
   checkAntigravityQuota,
-  recordOutboundTokenUsage
+  recordOutboundTokenUsage,
+  handleOneBotMessage,
+  dispatchBatch,
+  UNFINISHED_REGEX,
+  splitIntoBubbles
 };

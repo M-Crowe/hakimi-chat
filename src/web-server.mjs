@@ -13,6 +13,7 @@ import {
   saveManagedGroup,
   deleteManagedGroup,
   toggleGroupEnabled,
+  allocateWechatGroupId,
   getAllUserAffinities,
   setUserAffinity,
   deleteUserAffinity,
@@ -97,11 +98,14 @@ export function createWebServer({ config, eventBus, daemonApi }) {
     next();
   });
 
-  // 鉴权中间件 (除了 /api/auth/login 与静态页面资源)
+  // 鉴权中间件 (除了 /api/auth/login 与前端静态资源，/api/ 与 /images 均需鉴权)
   const authMiddleware = (req, res, next) => {
     if (!adminToken) return next();
-    if (req.path.startsWith("/api/auth/login")) return next();
-    if (!req.path.startsWith("/api/")) return next();
+    const reqPath = (req.path || "").toLowerCase();
+    if (reqPath === "/api/auth/login" || reqPath.startsWith("/api/auth/login/")) return next();
+    const isApi = reqPath === "/api" || reqPath.startsWith("/api/");
+    const isImages = reqPath === "/images" || reqPath.startsWith("/images/");
+    if (!isApi && !isImages) return next();
 
     const authHeader = req.headers.authorization;
     const bearerToken = authHeader && authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
@@ -109,7 +113,7 @@ export function createWebServer({ config, eventBus, daemonApi }) {
     const queryToken = req.query?.token;
 
     const token = bearerToken || customHeader || queryToken;
-    if (token === adminToken) {
+    if (typeof token === "string" && token === adminToken) {
       return next();
     }
     return res.status(401).json({ error: "Unauthorized: Invalid or missing admin token" });
@@ -141,13 +145,33 @@ export function createWebServer({ config, eventBus, daemonApi }) {
     }
   });
 
-  app.post("/api/groups", (req, res) => {
+  app.post("/api/groups", async (req, res) => {
     try {
-      const { groupId, name, enabled = true, triggerPolicy = "all" } = req.body || {};
-      if (!groupId) {
-        return res.status(400).json({ success: false, error: "缺少 groupId" });
+      const { groupId, name, enabled = true, triggerPolicy = "all", platform = "qq" } = req.body || {};
+      let targetGid = Number(groupId);
+      const targetName = (name !== undefined && name !== null) ? String(name).trim() : "";
+      const targetPlatform = platform === "wechat" ? "wechat" : "qq";
+
+      if (targetPlatform === "wechat") {
+        if (!targetName) {
+          return res.status(400).json({ success: false, error: "请填写微信群名称" });
+        }
+        if (!targetGid) {
+          targetGid = allocateWechatGroupId(targetName);
+        }
+      } else {
+        if (!targetGid) {
+          return res.status(400).json({ success: false, error: "缺少 groupId" });
+        }
       }
-      const group = saveManagedGroup(groupId, name, enabled, triggerPolicy);
+
+      const group = saveManagedGroup(targetGid, targetName, enabled, triggerPolicy, targetPlatform);
+
+      if (targetPlatform === "wechat") {
+        daemonApi?.reloadWechatGroupMaps?.();
+        daemonApi?.syncWechatGroup?.(enabled ? "add" : "remove", targetName);
+      }
+
       daemonApi?.broadcastEvent?.("group_change", { action: "create", group });
       res.json({ success: true, data: group });
     } catch (err) {
@@ -155,18 +179,26 @@ export function createWebServer({ config, eventBus, daemonApi }) {
     }
   });
 
-  app.put("/api/groups/:id", (req, res) => {
+  app.put("/api/groups/:id", async (req, res) => {
     try {
       const groupId = Number(req.params.id);
       const existing = getManagedGroup(groupId);
       if (!existing) {
         return res.status(404).json({ success: false, error: "群组不存在" });
       }
-      const { name, enabled, triggerPolicy } = req.body || {};
+      const { name, enabled, triggerPolicy, platform } = req.body || {};
       const targetName = (name !== undefined && name !== "") ? name : existing.group_name;
       const targetEnabled = typeof enabled === "boolean" ? enabled : existing.enabled;
       const targetPolicy = triggerPolicy === "strict" ? "strict" : (triggerPolicy === "all" ? "all" : existing.trigger_policy);
-      const group = saveManagedGroup(groupId, targetName, targetEnabled, targetPolicy);
+      const targetPlatform = platform || existing.platform || ((groupId >= 990000 && groupId <= 999999) ? "wechat" : "qq");
+
+      const group = saveManagedGroup(groupId, targetName, targetEnabled, targetPolicy, targetPlatform);
+
+      if (targetPlatform === "wechat") {
+        daemonApi?.reloadWechatGroupMaps?.();
+        daemonApi?.syncWechatGroup?.(targetEnabled ? "add" : "remove", targetName);
+      }
+
       daemonApi?.broadcastEvent?.("group_change", { action: "update", group });
       res.json({ success: true, data: group });
     } catch (err) {
@@ -174,13 +206,18 @@ export function createWebServer({ config, eventBus, daemonApi }) {
     }
   });
 
-  app.delete("/api/groups/:id", (req, res) => {
+  app.delete("/api/groups/:id", async (req, res) => {
     try {
       const groupId = Number(req.params.id);
+      const existing = getManagedGroup(groupId);
       if (daemonApi?.deleteGroup) {
         daemonApi.deleteGroup(groupId);
       } else {
         deleteManagedGroup(groupId);
+      }
+      if (existing?.platform === "wechat" || (groupId >= 990000 && groupId <= 999999)) {
+        daemonApi?.reloadWechatGroupMaps?.();
+        daemonApi?.syncWechatGroup?.("remove", existing?.group_name);
       }
       daemonApi?.broadcastEvent?.("group_change", { action: "delete", groupId });
       res.json({ success: true, message: `群 ${groupId} 已从白名单移除` });
@@ -189,7 +226,7 @@ export function createWebServer({ config, eventBus, daemonApi }) {
     }
   });
 
-  app.post("/api/groups/:id/toggle", (req, res) => {
+  app.post("/api/groups/:id/toggle", async (req, res) => {
     try {
       const groupId = Number(req.params.id);
       const { enabled } = req.body || {};
@@ -199,6 +236,10 @@ export function createWebServer({ config, eventBus, daemonApi }) {
         group = daemonApi.toggleGroup(groupId, targetEnabled);
       } else {
         group = toggleGroupEnabled(groupId, targetEnabled);
+      }
+      if (group?.platform === "wechat" || (groupId >= 990000 && groupId <= 999999)) {
+        daemonApi?.reloadWechatGroupMaps?.();
+        daemonApi?.syncWechatGroup?.(group.enabled ? "add" : "remove", group.group_name);
       }
       daemonApi?.broadcastEvent?.("group_change", { action: "toggle", group });
       res.json({ success: true, data: group });
@@ -833,7 +874,8 @@ export function createWebServer({ config, eventBus, daemonApi }) {
 
   // SPA 回退
   app.use((req, res, next) => {
-    if (req.path.startsWith("/api/") || req.path.startsWith("/images/")) return next();
+    const p = (req.path || "").toLowerCase();
+    if (p === "/api" || p.startsWith("/api/") || p === "/images" || p.startsWith("/images/")) return next();
     const indexPath = path.join(publicDir, "index.html");
     if (fs.existsSync(indexPath)) {
       return res.sendFile(indexPath);
@@ -921,9 +963,10 @@ export function createWebServer({ config, eventBus, daemonApi }) {
     }
   }
 
-  // 挂载广播方法到 eventBus 监听
+  // 挂载广播方法到 eventBus 监听（记录具名句柄，防止 stop 时泄露）
+  const onBroadcast = ({ type, data }) => broadcast(type, data);
   if (eventBus) {
-    eventBus.on("broadcast", ({ type, data }) => broadcast(type, data));
+    eventBus.on("broadcast", onBroadcast);
   }
 
   return {
@@ -940,8 +983,24 @@ export function createWebServer({ config, eventBus, daemonApi }) {
     },
     stop: () => {
       return new Promise((resolve) => {
+        if (eventBus && onBroadcast) {
+          eventBus.removeListener("broadcast", onBroadcast);
+        }
+        for (const c of clients) {
+          try { c.terminate(); } catch {}
+        }
+        clients.clear();
+        try {
+          if (typeof server.closeAllConnections === "function") {
+            server.closeAllConnections();
+          }
+        } catch {}
         wss.close(() => {
-          server.close(resolve);
+          if (server.listening) {
+            server.close(() => resolve());
+          } else {
+            resolve();
+          }
         });
       });
     }

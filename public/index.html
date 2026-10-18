@@ -388,14 +388,34 @@
       
       <!-- 1. 群聊管理 -->
       <div v-if="currentTab === 'groups'" class="max-w-7xl mx-auto space-y-6">
-        <div class="flex items-center justify-between">
-          <div>
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div class="flex items-center space-x-4 flex-wrap gap-y-2">
             <h2 class="text-xl font-bold text-white flex items-center space-x-2">
               <span>📡</span>
               <span>群聊管理</span>
             </h2>
+            <!-- 平台分类筛选胶囊 -->
+            <div class="flex items-center space-x-1 bg-[#101726] p-1 rounded-lg border border-[#232d42] text-xs font-avionics">
+              <button @click="groupFilterPlatform = 'all'"
+                :class="groupFilterPlatform === 'all' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm' : 'text-slate-400 hover:text-slate-200'"
+                class="px-2.5 py-1 rounded transition">
+                全部 ({{ groups.length }})
+              </button>
+              <button @click="groupFilterPlatform = 'qq'"
+                :class="groupFilterPlatform === 'qq' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40 shadow-sm' : 'text-slate-400 hover:text-slate-200'"
+                class="px-2.5 py-1 rounded transition flex items-center space-x-1">
+                <span>🐧 QQ</span>
+                <span class="text-[10px] opacity-75">({{ groups.filter(g => !isWechatGroup(g)).length }})</span>
+              </button>
+              <button @click="groupFilterPlatform = 'wechat'"
+                :class="groupFilterPlatform === 'wechat' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm' : 'text-slate-400 hover:text-slate-200'"
+                class="px-2.5 py-1 rounded transition flex items-center space-x-1">
+                <span>🟢 微信</span>
+                <span class="text-[10px] opacity-75">({{ groups.filter(g => isWechatGroup(g)).length }})</span>
+              </button>
+            </div>
           </div>
-          <button @click="openAddGroupModal" class="btn-tactile-cyan px-4 py-2 rounded text-xs font-avionics tracking-wider flex items-center space-x-1.5">
+          <button @click="openAddGroupModal" class="btn-tactile-cyan px-4 py-2 rounded text-xs font-avionics tracking-wider flex items-center space-x-1.5 self-start sm:self-auto">
             <span>➕</span>
             <span>添加托管群聊</span>
           </button>
@@ -403,7 +423,7 @@
 
         <!-- Groups Cards Grid (Modular Rack Units) -->
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          <div v-for="g in groups" :key="g.group_id" class="rack-card rounded-lg p-5 border border-[#253147] hover:border-[#3b4d6e] transition relative overflow-hidden group">
+          <div v-for="g in filteredGroups" :key="g.group_id" class="rack-card rounded-lg p-5 border border-[#253147] hover:border-[#3b4d6e] transition relative overflow-hidden group">
             <div class="screw screw-tl"></div>
             <div class="screw screw-tr"></div>
             <div class="screw screw-bl"></div>
@@ -411,11 +431,24 @@
             
             <div class="flex items-start justify-between relative z-10">
               <div>
-                <div class="flex items-center space-x-2">
+                <div class="flex items-center space-x-2 flex-wrap gap-y-1">
+                  <!-- 平台标识徽章 -->
+                  <span v-if="isWechatGroup(g)"
+                        class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-500/50 glow-emerald flex items-center space-x-1">
+                    <span>🟢</span>
+                    <span>WECHAT</span>
+                  </span>
+                  <span v-else
+                        class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-950/80 text-blue-300 border border-blue-500/50 glow-cyan flex items-center space-x-1">
+                    <span>🐧</span>
+                    <span>QQ</span>
+                  </span>
                   <span class="mil-label text-slate-400">CH-{{ g.group_id.toString().slice(-4) }}</span>
                   <h3 class="font-bold text-base text-white tracking-wide font-avionics">{{ g.group_name || ('信道 ' + g.group_id) }}</h3>
                 </div>
-                <div class="text-xs font-telemetry text-cyan-400/80 mt-1">FREQ ID: {{ g.group_id }}</div>
+                <div class="text-xs font-telemetry mt-1" :class="isWechatGroup(g) ? 'text-emerald-400/90' : 'text-cyan-400/80'">
+                  {{ isWechatGroup(g) ? 'WECHAT FREQ ID: ' + g.group_id + ' (虚拟载波)' : 'FREQ ID: ' + g.group_id }}
+                </div>
               </div>
               
               <!-- Physical Rocker Power Switch -->
@@ -1897,15 +1930,52 @@
           <h3 class="font-avionics font-bold text-base text-white tracking-wide">{{ isEditingGroup ? '信道策略校准' : '配置新信道机架' }}</h3>
         </div>
 
-        <div class="space-y-3 text-xs relative z-10 font-telemetry">
+        <div class="space-y-3.5 text-xs relative z-10 font-telemetry">
+          <!-- 平台选择分流 (新增时可选，编辑时固定) -->
           <div>
+            <label class="text-slate-400 mb-1.5 block">PLATFORM PROTOCOL (通信平台协议)</label>
+            <div class="grid grid-cols-2 gap-2">
+              <button type="button" @click="!isEditingGroup && (groupModalForm.platform = 'qq')" :disabled="isEditingGroup"
+                class="p-2 rounded border text-xs font-avionics flex items-center justify-center space-x-1.5 transition"
+                :class="groupModalForm.platform === 'qq' ? 'bg-blue-950/80 border-blue-500 text-blue-300 shadow-[0_0_10px_rgba(59,130,246,0.3)]' : 'slot-inset border-[#2b3952] text-slate-400 hover:text-white disabled:opacity-50'">
+                <span>🐧 QQ BOT 信道</span>
+              </button>
+              <button type="button" @click="!isEditingGroup && (groupModalForm.platform = 'wechat')" :disabled="isEditingGroup"
+                class="p-2 rounded border text-xs font-avionics flex items-center justify-center space-x-1.5 transition"
+                :class="groupModalForm.platform === 'wechat' ? 'bg-emerald-950/80 border-emerald-500 text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'slot-inset border-[#2b3952] text-slate-400 hover:text-white disabled:opacity-50'">
+                <span>🟢 微信 4.1 独立信道</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- QQ 模式输入项 -->
+          <div v-if="groupModalForm.platform === 'qq'">
             <label class="text-slate-400 mb-1 block">CHANNEL FREQ ID (QQ 群号)</label>
             <input v-model="groupModalForm.groupId" :disabled="isEditingGroup" type="number" placeholder="如: 587071853" class="slot-inset w-full rounded p-2.5 text-white disabled:opacity-50 focus:outline-none focus:border-cyan-500 font-telemetry">
           </div>
-          <div>
+
+          <div v-if="groupModalForm.platform === 'qq'">
             <label class="text-slate-400 mb-1 block">CALLSIGN / NAME (群别名呼号)</label>
             <input v-model="groupModalForm.name" type="text" placeholder="如: 技术交流与水群" class="slot-inset w-full rounded p-2.5 text-white focus:outline-none focus:border-cyan-500 font-telemetry">
           </div>
+
+          <!-- 微信 模式输入项 -->
+          <div v-if="groupModalForm.platform === 'wechat'" class="space-y-2">
+            <div>
+              <label class="text-slate-400 mb-1 block flex items-center justify-between">
+                <span>WECHAT ROOM NAME (微信群聊名称)</span>
+                <span class="text-emerald-400 text-[10px]">严格匹配微信聊天窗口</span>
+              </label>
+              <input v-model="groupModalForm.name" type="text" placeholder="需与微信窗口名称完全一致，如: 道馆馆" class="slot-inset w-full rounded p-2.5 text-white focus:outline-none focus:border-emerald-500 font-telemetry">
+            </div>
+            <div class="p-2.5 rounded bg-emerald-950/40 border border-emerald-800/50 text-[11px] text-emerald-300/90 leading-relaxed font-telemetry">
+              💡 系统将为该微信群自动分配专用 99xxxx 虚拟载波信道，并向后台隔离虚拟桌面的微信监听引擎动态热注册，无需重启服务。
+            </div>
+            <div v-if="isEditingGroup" class="text-[11px] text-slate-400 font-telemetry">
+              CURRENT FREQ ID: <span class="text-emerald-400 font-bold">{{ groupModalForm.groupId }}</span>
+            </div>
+          </div>
+
           <div>
             <label class="text-slate-400 mb-1 block">TRIGGER MATRIX (触发策略模式)</label>
             <select v-model="groupModalForm.triggerPolicy" class="slot-inset w-full rounded p-2.5 text-white focus:outline-none focus:border-cyan-500 font-telemetry">
@@ -2213,9 +2283,21 @@
         const logContainer = ref(null);
 
         // Modals
+        function isWechatGroup(g) {
+          if (!g) return false;
+          const gid = Number(g.group_id);
+          return g.platform === 'wechat' || (gid >= 990000 && gid <= 999999) || String(g.group_name || '').startsWith('微信');
+        }
+
         const showGroupModal = ref(false);
         const isEditingGroup = ref(false);
-        const groupModalForm = reactive({ groupId: null, name: '', enabled: true, triggerPolicy: 'all' });
+        const groupModalForm = reactive({ groupId: null, name: '', enabled: true, triggerPolicy: 'all', platform: 'qq' });
+        const groupFilterPlatform = ref('all');
+        const filteredGroups = computed(() => {
+          if (groupFilterPlatform.value === 'all') return groups.value;
+          if (groupFilterPlatform.value === 'wechat') return groups.value.filter(g => isWechatGroup(g));
+          return groups.value.filter(g => !isWechatGroup(g));
+        });
 
         const showIntercomModal = ref(false);
         const intercomForm = reactive({ targetType: 'group', targetId: '', message: '' });
@@ -2282,6 +2364,7 @@
           isEditingGroup.value = false;
           groupModalForm.groupId = '';
           groupModalForm.name = '';
+          groupModalForm.platform = 'qq';
           groupModalForm.enabled = true;
           groupModalForm.triggerPolicy = 'all';
           showGroupModal.value = true;
@@ -2291,21 +2374,35 @@
           isEditingGroup.value = true;
           groupModalForm.groupId = g.group_id;
           groupModalForm.name = g.group_name;
+          groupModalForm.platform = isWechatGroup(g) ? 'wechat' : 'qq';
           groupModalForm.enabled = g.enabled;
           groupModalForm.triggerPolicy = g.trigger_policy || 'all';
           showGroupModal.value = true;
         }
 
         async function saveGroupModal() {
-          if (!groupModalForm.groupId) return alert('请输入群号');
+          if (groupModalForm.platform === 'qq' && !groupModalForm.groupId) {
+            return alert('请输入 QQ 群号');
+          }
+          if (groupModalForm.platform === 'wechat' && !String(groupModalForm.name || '').trim()) {
+            return alert('请输入微信群聊名称（需与微信客户端窗口名称完全一致）');
+          }
           const method = isEditingGroup.value ? 'PUT' : 'POST';
           const url = isEditingGroup.value ? `/api/groups/${groupModalForm.groupId}` : '/api/groups';
-          await api(url, {
-            method,
-            body: JSON.stringify(groupModalForm)
-          });
-          showGroupModal.value = false;
-          loadGroups();
+          try {
+            const res = await api(url, {
+              method,
+              body: JSON.stringify(groupModalForm)
+            });
+            if (res && res.success !== false) {
+              showGroupModal.value = false;
+              loadGroups();
+            } else if (res && res.error) {
+              alert('保存失败: ' + res.error);
+            }
+          } catch (err) {
+            alert('提交异常: ' + err.message);
+          }
         }
 
         async function toggleGroup(g) {
@@ -2524,8 +2621,12 @@
           }
           if (!Array.isArray(list)) return [];
           return list.map(item => {
-            if (typeof item === 'string') return item;
-            return item?.url || (item?.file ? `/images/${item.file}` : '') || '';
+            let u = typeof item === 'string' ? item : (item?.url || (item?.file ? `/images/${item.file}` : '') || '');
+            if (u && u.startsWith('/images') && adminToken.value) {
+              const sep = u.includes('?') ? '&' : '?';
+              return `${u}${sep}token=${encodeURIComponent(adminToken.value)}`;
+            }
+            return u;
           }).filter(Boolean);
         }
 
@@ -3282,6 +3383,9 @@
           tabs,
           wsConnected,
           groups,
+          groupFilterPlatform,
+          filteredGroups,
+          isWechatGroup,
           toggleGroup,
           deleteGroup,
           resetGroupSession,

@@ -1,4 +1,4 @@
-import { discoverLanguageServer } from "./antigravity-discovery.mjs";
+import { discoverLanguageServer, getCachedLanguageServer, clearDiscoveryCache } from "./antigravity-discovery.mjs";
 
 /**
  * 直连 Antigravity 本地常驻 Language Server 的 ConnectRPC 原生客户端
@@ -6,17 +6,38 @@ import { discoverLanguageServer } from "./antigravity-discovery.mjs";
  */
 export class AgyConnectRpcClient {
   constructor(baseUrl, csrfToken) {
-    const auto = discoverLanguageServer();
-    let addr = baseUrl || process.env.ANTIGRAVITY_LS_ADDRESS || (auto ? auto.address : "http://127.0.0.1:6714");
+    const cached = getCachedLanguageServer();
+    let addr = baseUrl || process.env.ANTIGRAVITY_LS_ADDRESS || (cached ? cached.address : "http://127.0.0.1:6714");
     if (!addr.startsWith("http://") && !addr.startsWith("https://")) {
       addr = `http://${addr}`;
     }
     this.baseUrl = addr;
-    this.csrfToken = csrfToken || process.env.ANTIGRAVITY_CSRF_TOKEN || (auto ? auto.csrfToken : "");
+    this.csrfToken = csrfToken || process.env.ANTIGRAVITY_CSRF_TOKEN || (cached ? cached.csrfToken : "");
+    this._explicitBaseUrl = Boolean(baseUrl);
+    this._explicitCsrfToken = Boolean(csrfToken);
     console.log(`[ConnectRPC] 已自动连接 Antigravity 后台端点: ${this.baseUrl}`);
   }
 
+  async ensureDiscovered(forceRefresh = false) {
+    if ((!this._explicitCsrfToken && !this.csrfToken) || forceRefresh) {
+      if (!process.env.ANTIGRAVITY_CSRF_TOKEN || !process.env.ANTIGRAVITY_LS_ADDRESS) {
+        const auto = await discoverLanguageServer({ forceRefresh });
+        if (auto?.csrfToken && !this._explicitCsrfToken && !process.env.ANTIGRAVITY_CSRF_TOKEN) {
+          this.csrfToken = auto.csrfToken;
+        }
+        if (auto?.address && !this._explicitBaseUrl && !process.env.ANTIGRAVITY_LS_ADDRESS) {
+          this.baseUrl = auto.address;
+        }
+      }
+    }
+  }
+
   async callRpc(serviceMethod, payloadObj, timeoutMs = 30000) {
+    return await this._callRpcInternal(serviceMethod, payloadObj, timeoutMs, false);
+  }
+
+  async _callRpcInternal(serviceMethod, payloadObj, timeoutMs = 30000, isRetry = false) {
+    await this.ensureDiscovered();
     const url = `${this.baseUrl.replace(/\/$/, "")}/exa.language_server_pb.LanguageServerService/${serviceMethod}`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -43,6 +64,12 @@ export class AgyConnectRpcClient {
       }
 
       if (!response.ok) {
+        // 若遇到 401/403 鉴权失效且并非显式指定 Token，主动清除缓存并重试一次
+        if (!isRetry && (response.status === 401 || response.status === 403) && (!this._explicitBaseUrl || !this._explicitCsrfToken)) {
+          clearDiscoveryCache();
+          await this.ensureDiscovered(true);
+          return await this._callRpcInternal(serviceMethod, payloadObj, timeoutMs, true);
+        }
         const errorMsg = parsed.message || parsed.code || `HTTP ${response.status} ${response.statusText}`;
         const err = new Error(errorMsg);
         err.code = parsed.code || `HTTP_${response.status}`;
@@ -59,6 +86,12 @@ export class AgyConnectRpcClient {
       return parsed;
     } catch (err) {
       clearTimeout(timer);
+      // 若遇到网络不可达或连接拒绝且并非显式指定端点，主动清除缓存并尝试重新探测重试一次
+      if (!isRetry && (err.cause?.code === "ECONNREFUSED" || err.code === "ECONNREFUSED" || err.name === "TypeError") && (!this._explicitBaseUrl || !this._explicitCsrfToken)) {
+        clearDiscoveryCache();
+        await this.ensureDiscovered(true);
+        return await this._callRpcInternal(serviceMethod, payloadObj, timeoutMs, true);
+      }
       throw err;
     }
   }

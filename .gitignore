@@ -5,16 +5,22 @@ node_modules/
 config.json
 
 # Local SQLite databases and temp files
-data/*.db
-data/*.db-journal
-data/*.db-shm
-data/*.db-wal
+data/*.db*
+data/*.sqlite*
 data/inbox.json
 data/images/
 data/videos/
+SnowLuma*/data/
+
+# WeChat & Virtual Environments
+.venv-wechat/
+wechatauto_logs/
+temp-*/
 
 # Logs and runtime dumps
 *.log
+*.bak
+daemon_*.log
 daemon_err.log
 daemon_out.log
 .tmp/

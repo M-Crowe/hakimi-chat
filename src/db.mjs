@@ -14,11 +14,13 @@ if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-const db = new DatabaseSync(path.join(DATA_DIR, "state.db"));
+export let db = null;
+let currentDbPath = null;
+export let fts5Supported = true;
 
-db.exec("PRAGMA journal_mode = WAL;");
-db.exec("PRAGMA synchronous = NORMAL;");
-db.exec("PRAGMA busy_timeout = 5000;");
+export function getDatabasePath() {
+  return currentDbPath || process.env.SQLITE_PATH || path.join(DATA_DIR, "state.db");
+}
 
 /**
  * 遇到并发写锁 (SQLITE_BUSY / database is locked) 时自动重试，提升多进程与高并发稳定性
@@ -39,184 +41,320 @@ export function runWithRetry(fn, retries = 10, delayMs = 30) {
   }
 }
 
-// 1. 初始化数据库表结构（对齐多重人设与独立时空身位）
-db.exec(`
-  CREATE TABLE IF NOT EXISTS character_state (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    persona TEXT DEFAULT 'tomoko',
-    location TEXT NOT NULL DEFAULT '海外家中二楼房间',
-    action TEXT NOT NULL DEFAULT '坐在地毯上抱着 Switch 玩单机，手边放着麦茶',
-    detail TEXT NOT NULL DEFAULT '房间里只有游戏手柄按键的声音和屏幕光影',
-    mood TEXT NOT NULL DEFAULT '放松、专注',
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS persona_states (
-    persona TEXT PRIMARY KEY,
-    location TEXT NOT NULL,
-    action TEXT NOT NULL,
-    detail TEXT NOT NULL,
-    mood TEXT NOT NULL,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS user_affinity (
-    user_id INTEGER PRIMARY KEY,
-    affinity_points INTEGER DEFAULT 30,
-    level_name TEXT DEFAULT '初识',
-    last_reason TEXT DEFAULT '初始结识',
-    last_interact DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS session_memories (
-    session_key TEXT PRIMARY KEY,
-    memory_text TEXT,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  -- 滚动对话上下文表（无论是否 @ 均持久化，解决遗忘上下文痛点）
-  CREATE TABLE IF NOT EXISTS chat_messages (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    session_key TEXT NOT NULL,
-    sender_id INTEGER NOT NULL,
-    sender_name TEXT DEFAULT '',
-    message_text TEXT NOT NULL,
-    images TEXT DEFAULT '[]',
-    is_bot INTEGER DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_chat_session_time 
-  ON chat_messages (session_key, id DESC);
-
-  -- 群聊流行黑话/网络用语学习表（轻量顺风车学习）
-  CREATE TABLE IF NOT EXISTS slangs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    word TEXT UNIQUE NOT NULL,
-    meaning TEXT DEFAULT '',
-    count INTEGER DEFAULT 1,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_slangs_count 
-  ON slangs (count DESC);
-
-  -- 消息原子队列（单句单条原子出入队，杜绝文件并发竞态）
-  CREATE TABLE IF NOT EXISTS inbox_queue (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    payload TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  -- 会话活跃状态与上下文窗口持久化表（重启自愈，保证连续对话窗口与说话人不丢失）
-  CREATE TABLE IF NOT EXISTS session_states (
-    session_key TEXT PRIMARY KEY,
-    active_until INTEGER DEFAULT 0,
-    active_speaker INTEGER DEFAULT NULL,
-    sleep_until INTEGER DEFAULT 0,
-    last_interject_time INTEGER DEFAULT 0,
-    message_counter INTEGER DEFAULT 0,
-    cascade_id TEXT DEFAULT NULL,
-    turn_count INTEGER DEFAULT 0,
-    last_prompt TEXT DEFAULT '',
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  -- 群组管理表（白名单、别名、独立启闭、触发策略）
-  CREATE TABLE IF NOT EXISTS managed_groups (
-    group_id INTEGER PRIMARY KEY,
-    group_name TEXT NOT NULL DEFAULT '',
-    enabled INTEGER DEFAULT 1,
-    trigger_policy TEXT DEFAULT 'all', -- 'all' (允许自主插嘴) 或 'strict' (仅@或点名/直问)
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  -- Token 用量监测表（双轨 Token 估算 + 真实字符统计 + 思考Token + 吞吐速率 + 成本核算）
-  CREATE TABLE IF NOT EXISTS token_usage (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    session_key TEXT NOT NULL,
-    group_id INTEGER DEFAULT 0,
-    persona TEXT NOT NULL DEFAULT 'tomoko',
-    prompt_chars INTEGER DEFAULT 0,
-    reply_chars INTEGER DEFAULT 0,
-    estimated_prompt_tokens INTEGER DEFAULT 0,
-    estimated_reply_tokens INTEGER DEFAULT 0,
-    reasoning_tokens INTEGER DEFAULT 0,
-    duration_ms INTEGER DEFAULT 0,
-    throughput_tps REAL DEFAULT 0.0,
-    cost_cny REAL DEFAULT 0.0,
-    cost_usd REAL DEFAULT 0.0,
-    model_name TEXT DEFAULT '',
-    cached_tokens INTEGER DEFAULT 0,
-    new_tokens INTEGER DEFAULT 0,
-    cache_hit_rate REAL DEFAULT 0.0,
-    total_tokens INTEGER DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_token_usage_created ON token_usage (created_at DESC);
-  CREATE INDEX IF NOT EXISTS idx_token_usage_group ON token_usage (group_id, created_at DESC);
-  CREATE INDEX IF NOT EXISTS idx_token_usage_persona ON token_usage (persona, created_at DESC);
-`);
-
-// 优雅平滑升级：补充 character_state 的 persona 字段与 chat_messages 的 images 字段，以及 token_usage 增强字段
-try {
-  db.exec("ALTER TABLE character_state ADD COLUMN persona TEXT DEFAULT 'tomoko';");
-} catch {}
-try {
-  db.exec("ALTER TABLE chat_messages ADD COLUMN images TEXT DEFAULT '[]';");
-} catch {}
-try {
-  db.exec("ALTER TABLE token_usage ADD COLUMN cached_tokens INTEGER DEFAULT 0;");
-} catch {}
-try {
-  db.exec("ALTER TABLE token_usage ADD COLUMN new_tokens INTEGER DEFAULT 0;");
-} catch {}
-try {
-  db.exec("ALTER TABLE token_usage ADD COLUMN cache_hit_rate REAL DEFAULT 0.0;");
-} catch {}
-try {
-  db.exec("ALTER TABLE token_usage ADD COLUMN reasoning_tokens INTEGER DEFAULT 0;");
-} catch {}
-try {
-  db.exec("ALTER TABLE token_usage ADD COLUMN duration_ms INTEGER DEFAULT 0;");
-} catch {}
-try {
-  db.exec("ALTER TABLE token_usage ADD COLUMN throughput_tps REAL DEFAULT 0.0;");
-} catch {}
-try {
-  db.exec("ALTER TABLE token_usage ADD COLUMN cost_cny REAL DEFAULT 0.0;");
-} catch {}
-try {
-  db.exec("ALTER TABLE token_usage ADD COLUMN cost_usd REAL DEFAULT 0.0;");
-} catch {}
-try {
-  db.exec("ALTER TABLE token_usage ADD COLUMN model_name TEXT DEFAULT '';");
-} catch {}
-try {
-  db.exec("ALTER TABLE token_usage ADD COLUMN client TEXT DEFAULT 'antigravity';");
-} catch {}
-
-
-// 初始化各已知人设的专属时空状态基准
-for (const [key, p] of Object.entries(PERSONAS)) {
-  db.prepare(`
-    INSERT OR IGNORE INTO persona_states (persona, location, action, detail, mood)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(key, p.defaultLocation, p.defaultAction, p.defaultDetail || "现场平稳", p.defaultMood || "自然");
+/**
+ * 触发 SQLite WAL Checkpoint (TRUNCATE)，将 WAL 日志写回主库并截断 WAL 文件，消除文件膨胀
+ */
+export function checkpointDatabase(mode = "TRUNCATE") {
+  if (!db) return null;
+  try {
+    return runWithRetry(() => {
+      const validModes = ["PASSIVE", "FULL", "RESTART", "TRUNCATE"];
+      const targetMode = validModes.includes(String(mode).toUpperCase()) ? String(mode).toUpperCase() : "TRUNCATE";
+      const row = db.prepare(`PRAGMA wal_checkpoint(${targetMode});`).get();
+      return row || { busy: 0, log: 0, checkpointed: 0 };
+    });
+  } catch (err) {
+    console.warn(`[SQLite Checkpoint] 执行 PRAGMA wal_checkpoint(${mode}) 异常:`, err.message);
+    return null;
+  }
 }
 
-// 确保初始行存在
-db.exec(`
-  INSERT OR IGNORE INTO character_state (id, persona, location, action, detail, mood) 
-  VALUES (1, 'tomoko', '海外家中二楼房间', '坐在地毯上抱着 Switch 玩单机，手边放着麦茶', '房间里只有游戏手柄按键的声音和屏幕光影', '放松、专注');
-`);
+/**
+ * 执行数据库建表与平滑升级迁移
+ */
+export function runSchemaMigrations(targetDb) {
+  if (!targetDb) return;
 
-// 启动自愈：清理超过 5 分钟的过期积压消息
-try {
-  cleanStaleInboxMessages(300);
-} catch {}
+  targetDb.exec(`
+    CREATE TABLE IF NOT EXISTS character_state (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      persona TEXT DEFAULT 'tomoko',
+      location TEXT NOT NULL DEFAULT '海外家中二楼房间',
+      action TEXT NOT NULL DEFAULT '坐在地毯上抱着 Switch 玩单机，手边放着麦茶',
+      detail TEXT NOT NULL DEFAULT '房间里只有游戏手柄按键的声音和屏幕光影',
+      mood TEXT NOT NULL DEFAULT '放松、专注',
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS persona_states (
+      persona TEXT PRIMARY KEY,
+      location TEXT NOT NULL,
+      action TEXT NOT NULL,
+      detail TEXT NOT NULL,
+      mood TEXT NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS user_affinity (
+      user_id INTEGER PRIMARY KEY,
+      affinity_points INTEGER DEFAULT 30,
+      level_name TEXT DEFAULT '初识',
+      last_reason TEXT DEFAULT '初始结识',
+      last_interact DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS session_memories (
+      session_key TEXT PRIMARY KEY,
+      memory_text TEXT,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- 滚动对话上下文表（无论是否 @ 均持久化，解决遗忘上下文痛点）
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_key TEXT NOT NULL,
+      sender_id INTEGER NOT NULL,
+      sender_name TEXT DEFAULT '',
+      message_text TEXT NOT NULL,
+      images TEXT DEFAULT '[]',
+      is_bot INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_chat_session_time 
+    ON chat_messages (session_key, id DESC);
+
+    -- 群聊流行黑话/网络用语学习表（轻量顺风车学习）
+    CREATE TABLE IF NOT EXISTS slangs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      word TEXT UNIQUE NOT NULL,
+      meaning TEXT DEFAULT '',
+      count INTEGER DEFAULT 1,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_slangs_count 
+    ON slangs (count DESC);
+
+    -- 消息原子队列（单句单条原子出入队，杜绝文件并发竞态）
+    CREATE TABLE IF NOT EXISTS inbox_queue (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      payload TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- 会话活跃状态与上下文窗口持久化表（重启自愈，保证连续对话窗口与说话人不丢失）
+    CREATE TABLE IF NOT EXISTS session_states (
+      session_key TEXT PRIMARY KEY,
+      active_until INTEGER DEFAULT 0,
+      active_speaker INTEGER DEFAULT NULL,
+      sleep_until INTEGER DEFAULT 0,
+      last_interject_time INTEGER DEFAULT 0,
+      message_counter INTEGER DEFAULT 0,
+      cascade_id TEXT DEFAULT NULL,
+      turn_count INTEGER DEFAULT 0,
+      last_prompt TEXT DEFAULT '',
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- 群组管理表（白名单、别名、独立启闭、触发策略、平台类型）
+    CREATE TABLE IF NOT EXISTS managed_groups (
+      group_id INTEGER PRIMARY KEY,
+      group_name TEXT NOT NULL DEFAULT '',
+      enabled INTEGER DEFAULT 1,
+      trigger_policy TEXT DEFAULT 'all', -- 'all' (允许自主插嘴) 或 'strict' (仅@或点名/直问)
+      platform TEXT DEFAULT 'qq',        -- 'qq' 或 'wechat'
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Token 用量监测表（双轨 Token 估算 + 真实字符统计 + 思考Token + 吞吐速率 + 成本核算）
+    CREATE TABLE IF NOT EXISTS token_usage (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_key TEXT NOT NULL,
+      group_id INTEGER DEFAULT 0,
+      persona TEXT NOT NULL DEFAULT 'tomoko',
+      prompt_chars INTEGER DEFAULT 0,
+      reply_chars INTEGER DEFAULT 0,
+      estimated_prompt_tokens INTEGER DEFAULT 0,
+      estimated_reply_tokens INTEGER DEFAULT 0,
+      reasoning_tokens INTEGER DEFAULT 0,
+      duration_ms INTEGER DEFAULT 0,
+      throughput_tps REAL DEFAULT 0.0,
+      cost_cny REAL DEFAULT 0.0,
+      cost_usd REAL DEFAULT 0.0,
+      model_name TEXT DEFAULT '',
+      cached_tokens INTEGER DEFAULT 0,
+      new_tokens INTEGER DEFAULT 0,
+      cache_hit_rate REAL DEFAULT 0.0,
+      total_tokens INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_token_usage_created ON token_usage (created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_token_usage_group ON token_usage (group_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_token_usage_persona ON token_usage (persona, created_at DESC);
+  `);
+
+  // 优雅平滑升级：补充字段
+  try {
+    targetDb.exec("ALTER TABLE character_state ADD COLUMN persona TEXT DEFAULT 'tomoko';");
+  } catch {}
+  try {
+    targetDb.exec("ALTER TABLE chat_messages ADD COLUMN images TEXT DEFAULT '[]';");
+  } catch {}
+  try {
+    targetDb.exec("ALTER TABLE token_usage ADD COLUMN cached_tokens INTEGER DEFAULT 0;");
+  } catch {}
+  try {
+    targetDb.exec("ALTER TABLE token_usage ADD COLUMN new_tokens INTEGER DEFAULT 0;");
+  } catch {}
+  try {
+    targetDb.exec("ALTER TABLE token_usage ADD COLUMN cache_hit_rate REAL DEFAULT 0.0;");
+  } catch {}
+  try {
+    targetDb.exec("ALTER TABLE token_usage ADD COLUMN reasoning_tokens INTEGER DEFAULT 0;");
+  } catch {}
+  try {
+    targetDb.exec("ALTER TABLE token_usage ADD COLUMN duration_ms INTEGER DEFAULT 0;");
+  } catch {}
+  try {
+    targetDb.exec("ALTER TABLE token_usage ADD COLUMN throughput_tps REAL DEFAULT 0.0;");
+  } catch {}
+  try {
+    targetDb.exec("ALTER TABLE token_usage ADD COLUMN cost_cny REAL DEFAULT 0.0;");
+  } catch {}
+  try {
+    targetDb.exec("ALTER TABLE token_usage ADD COLUMN cost_usd REAL DEFAULT 0.0;");
+  } catch {}
+  try {
+    targetDb.exec("ALTER TABLE token_usage ADD COLUMN model_name TEXT DEFAULT '';");
+  } catch {}
+  try {
+    targetDb.exec("ALTER TABLE token_usage ADD COLUMN client TEXT DEFAULT 'antigravity';");
+  } catch {}
+
+  // 初始化各已知人设的专属时空状态基准
+  for (const [key, p] of Object.entries(PERSONAS)) {
+    targetDb.prepare(`
+      INSERT OR IGNORE INTO persona_states (persona, location, action, detail, mood)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(key, p.defaultLocation, p.defaultAction, p.defaultDetail || "现场平稳", p.defaultMood || "自然");
+  }
+
+  // 确保初始行存在
+  targetDb.exec(`
+    INSERT OR IGNORE INTO character_state (id, persona, location, action, detail, mood) 
+    VALUES (1, 'tomoko', '海外家中二楼房间', '坐在地毯上抱着 Switch 玩单机，手边放着麦茶', '房间里只有游戏手柄按键的声音和屏幕光影', '放松、专注');
+  `);
+
+  // Tulpa 情境记忆表与本地纯算法群聊黑话词频表
+  try {
+    targetDb.exec(`
+      CREATE TABLE IF NOT EXISTS tulpa_episodes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_key TEXT NOT NULL,
+        user_id INTEGER NOT NULL,
+        user_name TEXT DEFAULT '',
+        user_message TEXT NOT NULL,
+        reply_message TEXT DEFAULT '',
+        context_summary TEXT DEFAULT '',
+        keywords TEXT DEFAULT '',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_tulpa_episodes_session ON tulpa_episodes (session_key, id DESC);
+      CREATE INDEX IF NOT EXISTS idx_tulpa_episodes_user ON tulpa_episodes (user_id, id DESC);
+
+      CREATE TABLE IF NOT EXISTS group_slangs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        group_id INTEGER NOT NULL DEFAULT 0,
+        term TEXT NOT NULL,
+        frequency INTEGER DEFAULT 1,
+        last_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(group_id, term)
+      );
+      CREATE INDEX IF NOT EXISTS idx_group_slangs_freq ON group_slangs (group_id, frequency DESC);
+    `);
+
+    try {
+      targetDb.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS tulpa_episodes_fts USING fts5(
+          user_message,
+          reply_message,
+          keywords,
+          content='tulpa_episodes',
+          content_rowid='id'
+        );
+
+        CREATE TRIGGER IF NOT EXISTS trg_tulpa_episodes_ai AFTER INSERT ON tulpa_episodes BEGIN
+          INSERT INTO tulpa_episodes_fts(rowid, user_message, reply_message, keywords)
+          VALUES (new.id, new.user_message, new.reply_message, new.keywords);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_tulpa_episodes_ad AFTER DELETE ON tulpa_episodes BEGIN
+          INSERT INTO tulpa_episodes_fts(tulpa_episodes_fts, rowid, user_message, reply_message, keywords)
+          VALUES ('delete', old.id, old.user_message, old.reply_message, old.keywords);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS trg_tulpa_episodes_au AFTER UPDATE ON tulpa_episodes BEGIN
+          INSERT INTO tulpa_episodes_fts(tulpa_episodes_fts, rowid, user_message, reply_message, keywords)
+          VALUES ('delete', old.id, old.user_message, old.reply_message, old.keywords);
+          INSERT INTO tulpa_episodes_fts(rowid, user_message, reply_message, keywords)
+          VALUES (new.id, new.user_message, new.reply_message, new.keywords);
+        END;
+      `);
+      fts5Supported = true;
+    } catch (ftsErr) {
+      fts5Supported = false;
+    }
+    // 微信支持架构迁移：为 managed_groups 增设 platform 字段
+    try {
+      const groupColumns = targetDb.prepare("PRAGMA table_info(managed_groups)").all();
+      if (groupColumns && !groupColumns.some(col => col.name === "platform")) {
+        targetDb.exec("ALTER TABLE managed_groups ADD COLUMN platform TEXT DEFAULT 'qq'");
+      }
+      // 纠正已有记录：微信频段严格限定在 990000~999999 虚拟频段（或群名带微信），其余均归属 QQ 平台
+      targetDb.exec("UPDATE managed_groups SET platform = 'qq' WHERE group_id NOT BETWEEN 990000 AND 999999");
+      targetDb.exec("UPDATE managed_groups SET platform = 'wechat' WHERE (group_id BETWEEN 990000 AND 999999) OR group_name LIKE '微信%'");
+    } catch {}
+  } catch (err) {
+    console.warn("[SQLite] tulpa_episodes / group_slangs 迁移异常:", err.message);
+  }
+}
+
+/**
+ * 显式初始化数据库连接与架构迁移
+ * 支持自定义数据库路径（或 SQLITE_PATH 环境变量），保持向后无感兼容
+ */
+export function initDatabase(dbPathOrInstance = null) {
+  if (db && typeof db.close === "function" && db !== dbPathOrInstance) {
+    try {
+      db.close();
+    } catch {}
+  }
+
+  if (dbPathOrInstance && typeof dbPathOrInstance === "object" && typeof dbPathOrInstance.prepare === "function") {
+    db = dbPathOrInstance;
+    currentDbPath = ":memory:";
+  } else if (typeof dbPathOrInstance === "string") {
+    currentDbPath = dbPathOrInstance;
+    if (currentDbPath !== ":memory:") {
+      const parentDir = path.dirname(currentDbPath);
+      if (!fs.existsSync(parentDir)) {
+        fs.mkdirSync(parentDir, { recursive: true });
+      }
+    }
+    db = new DatabaseSync(currentDbPath);
+  } else {
+    currentDbPath = process.env.SQLITE_PATH || path.join(DATA_DIR, "state.db");
+    const parentDir = path.dirname(currentDbPath);
+    if (!fs.existsSync(parentDir)) {
+      fs.mkdirSync(parentDir, { recursive: true });
+    }
+    db = new DatabaseSync(currentDbPath);
+  }
+
+  db.exec("PRAGMA journal_mode = WAL;");
+  db.exec("PRAGMA synchronous = NORMAL;");
+  db.exec("PRAGMA busy_timeout = 5000;");
+
+  runSchemaMigrations(db);
+  return db;
+}
+
+// 模块加载默认自动初始化主库，保障完全向后兼容
+initDatabase();
 
 /**
  * 获取角色当前所处位置、正在做的事情、现场细节和心情
@@ -333,6 +471,7 @@ export function updateCharacterLocation(location, action, detail = "", mood = "�
  * 6. 特别 (90 ~ 100)
  */
 export function getAffinityLevelName(points) {
+  if (typeof points !== "number" || !Number.isFinite(points)) return "初识";
   if (points < 0) return "嫌恶";
   if (points <= 29) return "戒备";
   if (points <= 49) return "初识";
@@ -345,29 +484,50 @@ export function getAffinityLevelName(points) {
  * 好感度系统：读取用户好感度与称谓
  */
 export function getUserAffinity(userId) {
+  const uid = Number(userId);
+  if (!uid || uid <= 0) {
+    return { user_id: 0, affinity_points: 30, level_name: "初识", last_reason: "初始结识" };
+  }
   return runWithRetry(() => {
     const query = db.prepare("SELECT user_id, affinity_points, level_name, last_reason FROM user_affinity WHERE user_id = ?");
-    let row = query.get(userId);
+    let row = query.get(uid);
     if (!row) {
       try {
-        db.prepare("INSERT OR IGNORE INTO user_affinity (user_id, affinity_points, level_name, last_reason) VALUES (?, 30, '初识', '初始结识')").run(userId);
+        db.prepare("INSERT OR IGNORE INTO user_affinity (user_id, affinity_points, level_name, last_reason) VALUES (?, 30, '初识', '初始结识')").run(uid);
       } catch {}
-      row = query.get(userId) || { user_id: userId, affinity_points: 30, level_name: "初识", last_reason: "初始结识" };
+      row = query.get(uid) || { user_id: uid, affinity_points: 30, level_name: "初识", last_reason: "初始结识" };
     }
     return row;
   });
 }
 
 /**
- * 好感度系统：根据 [af:+3|理由] 动态加减分
+ * 好感度系统：根据 [af:±x|理由] 动态加减分
+ * 铁律：单次变动严格限制在 [-2, +2]（可通过 options.clamp = false 显式旁路）
  */
-export function modifyUserAffinity(userId, delta, reason = "") {
+export function modifyUserAffinity(userId, delta, reason = "", options = {}) {
+  const uid = Number(userId);
+  if (!uid || uid <= 0) {
+    return { newPoints: 30, newLevel: "初识", reason: "系统/巡逻保护", clampedDelta: 0 };
+  }
   return runWithRetry(() => {
-    const current = getUserAffinity(userId);
-    let newPoints = (current.affinity_points ?? 30) + delta;
+    let rawDelta = typeof delta === "number" ? delta : (parseInt(delta, 10) || 0);
+    if (!Number.isFinite(rawDelta)) {
+      rawDelta = 0;
+    }
+    rawDelta = Math.round(rawDelta);
+    const shouldClamp = typeof options === "boolean" ? options : (options?.clamp !== false);
+    const effectiveDelta = shouldClamp ? Math.max(-2, Math.min(2, rawDelta)) : rawDelta;
+    const current = getUserAffinity(uid);
+    let currentPoints = current.affinity_points;
+    if (typeof currentPoints !== "number" || !Number.isFinite(currentPoints)) {
+      currentPoints = 30;
+    }
+    let newPoints = currentPoints + effectiveDelta;
     // 范围约束在 -100 ~ 100
     if (newPoints > 100) newPoints = 100;
     if (newPoints < -100) newPoints = -100;
+    newPoints = Math.round(newPoints);
 
     const newLevel = getAffinityLevelName(newPoints);
     const effectiveReason = (reason && reason.trim()) ? reason.trim() : (current.last_reason || "互动更新");
@@ -377,8 +537,8 @@ export function modifyUserAffinity(userId, delta, reason = "") {
       SET affinity_points = ?, level_name = ?, last_reason = ?, last_interact = CURRENT_TIMESTAMP 
       WHERE user_id = ?
     `);
-    stmt.run(newPoints, newLevel, effectiveReason, userId);
-    return { newPoints, newLevel, reason: effectiveReason };
+    stmt.run(newPoints, newLevel, effectiveReason, uid);
+    return { newPoints, newLevel, reason: effectiveReason, clampedDelta: effectiveDelta };
   });
 }
 
@@ -544,32 +704,103 @@ export function clearSessionStates() {
   db.exec("DELETE FROM session_states;");
 }
 
+const messageInsertCounters = new Map();
+const MESSAGE_TRIM_BATCH_SIZE = 40;
+
+export function resetMessageInsertCounters() {
+  messageInsertCounters.clear();
+}
+
+export function getMessageInsertCount(sessionKey) {
+  return messageInsertCounters.get(sessionKey) || 0;
+}
+
+/**
+ * 维持单群最多 keepLimit (默认 200) 条历史消息，批量修剪旧消息以消除写放大
+ */
+export function trimChatMessages(sessionKey = null, keepLimit = 200) {
+  if (!db) return 0;
+  try {
+    return runWithRetry(() => {
+      const limit = Math.max(10, parseInt(keepLimit, 10) || 200);
+      if (sessionKey) {
+        const stmt = db.prepare(`
+          DELETE FROM chat_messages 
+          WHERE session_key = ? AND id NOT IN (
+            SELECT id FROM chat_messages WHERE session_key = ? ORDER BY id DESC LIMIT ?
+          )
+        `);
+        const res = stmt.run(sessionKey, sessionKey, limit);
+        return res?.changes || 0;
+      } else {
+        const sessions = db.prepare("SELECT DISTINCT session_key FROM chat_messages").all();
+        let totalChanges = 0;
+        const stmt = db.prepare(`
+          DELETE FROM chat_messages 
+          WHERE session_key = ? AND id NOT IN (
+            SELECT id FROM chat_messages WHERE session_key = ? ORDER BY id DESC LIMIT ?
+          )
+        `);
+        for (const row of sessions) {
+          if (row.session_key) {
+            totalChanges += (stmt.run(row.session_key, row.session_key, limit)?.changes || 0);
+          }
+        }
+        return totalChanges;
+      }
+    });
+  } catch (err) {
+    console.warn("[SQLite Trim] chat_messages 修剪异常:", err.message);
+    return 0;
+  }
+}
+
 /**
  * 记录单条群消息（无论群友发言还是机器人回复）
  * 包含单条超长自动截断保护（防小作文刷屏烧额度）与空值防御
+ * 核心优化：杜绝每条插入都执行子查询修剪，按批次阈值（每 40 条）节流修剪，彻底消除写放大
  */
-export function recordChatMessage(sessionKey, senderId, senderName, text, isBot = false, botName = "智子", images = []) {
-  if (!text || !text.trim()) return;
+export function recordChatMessage(sessionKey, senderId, senderName, text, isBot = false, botName = "智子", images = [], options = {}) {
+  if (!text || !text.trim()) return null;
   // 单条文本安全截断上限为 150 字
   const safeText = text.trim().slice(0, 150);
   const cleanId = (senderId && String(senderId) !== "undefined" && String(senderId) !== "null") ? Number(senderId) : 0;
   const defaultSpeaker = isBot ? (botName || "Bot") : (cleanId ? `群友(${cleanId})` : "群友");
   let finalSpeaker = (senderName && String(senderName) !== "undefined" && String(senderName).trim()) ? String(senderName).trim() : defaultSpeaker;
+
+  let effectiveImages = images;
+  let effectiveOptions = options;
+  if (images && !Array.isArray(images) && typeof images === "object") {
+    effectiveOptions = images;
+    effectiveImages = [];
+  }
+  const imagesJson = Array.isArray(effectiveImages) && effectiveImages.length ? JSON.stringify(effectiveImages) : "[]";
+
+  return runWithRetry(() => {
+    const stmt = db.prepare(`
+      INSERT INTO chat_messages (session_key, sender_id, sender_name, message_text, is_bot, images)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    const info = stmt.run(sessionKey, cleanId, finalSpeaker, safeText, isBot ? 1 : 0, imagesJson);
+
+    // 节流批量修剪：单群历史保持在约 200 条，每 40 次写入触发一次修剪或显式 forceTrim
+    const count = (messageInsertCounters.get(sessionKey) || 0) + 1;
+    const forceTrim = Boolean(effectiveOptions?.forceTrim);
+    if (forceTrim || count >= MESSAGE_TRIM_BATCH_SIZE) {
+      messageInsertCounters.set(sessionKey, 0);
+      trimChatMessages(sessionKey, 200);
+    } else {
+      messageInsertCounters.set(sessionKey, count);
+    }
+
+    return info?.lastInsertRowid || null;
+  });
+}
+
+export function updateChatMessageImages(messageId, images = []) {
+  if (!messageId) return;
   const imagesJson = Array.isArray(images) && images.length ? JSON.stringify(images) : "[]";
-
-  const stmt = db.prepare(`
-    INSERT INTO chat_messages (session_key, sender_id, sender_name, message_text, is_bot, images)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `);
-  stmt.run(sessionKey, cleanId, finalSpeaker, safeText, isBot ? 1 : 0, imagesJson);
-
-  // 维持单群最多 200 条轻量历史，多余的自然清除
-  db.prepare(`
-    DELETE FROM chat_messages 
-    WHERE session_key = ? AND id NOT IN (
-      SELECT id FROM chat_messages WHERE session_key = ? ORDER BY id DESC LIMIT 200
-    )
-  `).run(sessionKey, sessionKey);
+  db.prepare("UPDATE chat_messages SET images = ? WHERE id = ?").run(imagesJson, messageId);
 }
 
 
@@ -613,6 +844,38 @@ export function getRecentChatContext(sessionKey, limit = 15) {
 }
 
 /**
+ * 获取指定会话最新一条消息的自增 ID
+ */
+export function getLastChatMessageId(sessionKey) {
+  if (!db || !sessionKey) return 0;
+  try {
+    const row = db.prepare("SELECT id FROM chat_messages WHERE session_key = ? ORDER BY id DESC LIMIT 1").get(sessionKey);
+    return row?.id || 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * 检查自指定消息 ID 之后，是否有真人（is_bot = 0）发送了新消息（打断检测）
+ */
+export function hasHumanInterrupted(sessionKey, sinceMessageId = 0) {
+  if (!db || !sessionKey) return null;
+  try {
+    const row = db.prepare(`
+      SELECT id, sender_id, sender_name, message_text 
+      FROM chat_messages 
+      WHERE session_key = ? AND id > ? AND is_bot = 0 
+      ORDER BY id DESC 
+      LIMIT 1
+    `).get(sessionKey, sinceMessageId || 0);
+    return row || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * 记录或更新群聊黑话（顺风车学习）
  */
 export function recordSlang(word, meaning = "") {
@@ -645,69 +908,395 @@ export function getTopSlangs(limit = 5) {
 }
 
 // -------------------------------------------------------------
+// 群聊流行黑话/网络用语纯算法词频统计 (Local Pure-Algorithm Slang Tracker)
+// -------------------------------------------------------------
+
+// 常用虚词/停用词表（避免把常见口语助词当成流行黑话）
+const SLANG_STOPWORDS = new Set([
+  "这个", "那个", "什么", "怎么", "为什么", "可以", "觉得", "一下", "不是", "就是",
+  "还有", "现在", "知道", "这样", "那样", "因为", "所以", "如果", "虽然", "但是",
+  "而且", "然后", "其实", "大家", "自己", "已经", "感觉", "可能", "应该", "真的",
+  "好像", "看到", "听到", "出来", "进去", "起来", "过来", "过去", "没有", "我们",
+  "你们", "他们", "这里", "那里", "哪里", "什么时候", "怎么会", "不知道", "好不好",
+  "能不能", "是不是", "行不行", "有没有", "怎么说", "怎么样", "太好了", "今天", "明天",
+  "昨天", "好的", "收到", "一直", "很多", "多少", "一起", "还是", "或者", "以及",
+  "不要", "不行", "不会", "不能", "不可", "这么", "那么", "非常", "特别", "十分", "比较",
+  "开始", "结束", "最后", "前面", "后面", "上面", "下面", "里面", "外面", "有人", "无人",
+  "谢谢", "感谢", "辛苦", "麻烦", "再见", "拜拜", "早安", "晚安", "早上好", "晚上好",
+  "我也", "也是", "都是", "大家都", "大家都很", "也是这么"
+]);
+
+const FUNCTIONAL_PARTICLES = new Set([
+  "的", "了", "着", "呢", "吧", "啊", "呀", "吗", "嘛", "么", "啦", "哇", "哒", "捏", "嗷", "呗"
+]);
+
+/**
+ * 本地纯算法 N-gram 与流行语提取引擎 (0 API 成本，0 LLM 消耗)
+ */
+export function extractCandidateNgrams(text) {
+  if (!text || typeof text !== "string") return [];
+  // 1. 清理 CQ 码、链接、HTML转义实体、@ 与控制字符
+  const cleaned = text
+    .replace(/\[CQ:[^\]]+\]/gi, " ")
+    .replace(/https?:\/\/\S+/gi, " ")
+    .replace(/&(?:amp|quot|lt|gt|nbsp|#\d+);/gi, " ")
+    .replace(/[@#][\w\u4e00-\u9fa5]+/g, " ")
+    .trim();
+
+  const candidates = new Set();
+
+  // 2. 提取高频字母/数字网络缩写与专有名词 (如 Switch2, DLSS, yyds, nb, gg, kswl, awsl, op, cp, xswl, dddd)
+  // 排除单纯的普通数字如 100, 5000（保留 666, 233, 2333 等典型梗数字）
+  const alphaMatches = cleaned.match(/(?:[a-zA-Z][a-zA-Z0-9]{1,9}|666+|233+|886|555+|999+)/g);
+  if (alphaMatches) {
+    for (const m of alphaMatches) {
+      const lower = m.toLowerCase();
+      if (!/^(the|and|for|are|but|not|you|all|any|can|had|her|was|one|our|out|day|get|has|him|his|how|man|new|now|old|see|two|way|who|boy|did|its|let|put|say|she|too|use|amp|quot|null|true|false)$/i.test(lower)) {
+        candidates.add(lower);
+      }
+    }
+  }
+
+  // 3. 提取连续汉字子串
+  const cjkSegments = cleaned.match(/[\u4e00-\u9fa5]+/g);
+  if (cjkSegments) {
+    for (const seg of cjkSegments) {
+      const len = seg.length;
+      if (len < 2) continue;
+      // 提取 2-gram, 3-gram, 4-gram
+      for (let n = 2; n <= Math.min(4, len); n++) {
+        for (let i = 0; i <= len - n; i++) {
+          const gram = seg.slice(i, i + n);
+          // 滤除虚词尾缀或首尾助词（例如 "的好"、"跃啊"、"里的" 等跨词截断杂质）
+          if (FUNCTIONAL_PARTICLES.has(gram[0]) || FUNCTIONAL_PARTICLES.has(gram[gram.length - 1])) {
+            continue;
+          }
+          if (!SLANG_STOPWORDS.has(gram)) {
+            candidates.add(gram);
+          }
+        }
+      }
+    }
+  }
+
+  return Array.from(candidates);
+}
+
+/**
+ * 记录群聊网络用语词频（本地纯算法 N-gram，0 Token 消耗）
+ */
+export function trackGroupSlangFrequency(groupId, text) {
+  if (!db || !groupId || !text) return;
+  const terms = extractCandidateNgrams(text);
+  if (terms.length === 0) return;
+
+  runWithRetry(() => {
+    const stmt = db.prepare(`
+      INSERT INTO group_slangs (group_id, term, frequency, last_seen)
+      VALUES (?, ?, 1, CURRENT_TIMESTAMP)
+      ON CONFLICT(group_id, term) DO UPDATE SET
+        frequency = frequency + 1,
+        last_seen = CURRENT_TIMESTAMP
+    `);
+    for (const term of terms) {
+      try {
+        stmt.run(Number(groupId), term);
+      } catch {}
+    }
+  });
+}
+
+/**
+ * 查询指定群聊的 Top N 流行网络黑话（支持按最小频次筛选）
+ */
+export function getTopGroupSlangs(groupId, limit = 5, minFrequency = 1) {
+  if (!db) return [];
+  try {
+    const minFreq = Math.max(1, parseInt(minFrequency, 10) || 1);
+    const query = db.prepare(`
+      SELECT term as word, frequency as count, last_seen 
+      FROM group_slangs 
+      WHERE group_id = ? AND frequency >= ?
+      ORDER BY frequency DESC 
+      LIMIT ?
+    `);
+    return query.all(Number(groupId), minFreq, limit);
+  } catch {
+    return [];
+  }
+}
+
+// -------------------------------------------------------------
+// Tulpa 情境记忆 (Episodic Memory / FTS5 BM25 检索)
+// -------------------------------------------------------------
+
+/**
+ * 记录真实人类对话高光切片 (Tulpa Episodic Memory)
+ */
+export function recordTulpaEpisode({
+  sessionKey = "",
+  userId = 0,
+  userName = "",
+  userMessage = "",
+  replyMessage = "",
+  contextSummary = "",
+  keywords = ""
+}) {
+  if (!db || !userMessage || !userMessage.trim()) return null;
+  return runWithRetry(() => {
+    let kw = keywords;
+    if (!kw) {
+      kw = extractCandidateNgrams(userMessage + " " + (replyMessage || "")).join(" ");
+    }
+    const stmt = db.prepare(`
+      INSERT INTO tulpa_episodes (session_key, user_id, user_name, user_message, reply_message, context_summary, keywords)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    const info = stmt.run(
+      sessionKey,
+      Number(userId) || 0,
+      userName || "",
+      userMessage.trim(),
+      (replyMessage || "").trim(),
+      (contextSummary || "").trim(),
+      kw.trim()
+    );
+    return info.lastInsertRowid;
+  });
+}
+
+/**
+ * 更新指定会话最近一条对话切片的回复内容，并同步更新分词关键词
+ */
+export function updateLatestTulpaEpisodeReply(sessionKey, replyMessage) {
+  if (!db || !sessionKey || !replyMessage) return false;
+  try {
+    return runWithRetry(() => {
+      const row = db.prepare(`
+        SELECT id, user_message FROM tulpa_episodes 
+        WHERE session_key = ? 
+        ORDER BY id DESC 
+        LIMIT 1
+      `).get(sessionKey);
+      if (!row) return false;
+      const cleanReply = replyMessage.trim();
+      const kw = extractCandidateNgrams(row.user_message + " " + cleanReply).join(" ");
+      db.prepare(`UPDATE tulpa_episodes SET reply_message = ?, keywords = ? WHERE id = ?`).run(cleanReply, kw, row.id);
+      return true;
+    });
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 基于 FTS5 BM25 全文检索匹配最相关的 1~2 个真实对话情境 (0 Token API 成本)
+ * 支持 FTS5 异常时自动降级到 SQL LIKE 模糊匹配
+ * 严格只返回已具备真实回复的完整对话样本，杜绝注入未完结空回复
+ */
+export function searchTulpaEpisodes(queryText, limit = 2) {
+  if (!db || !queryText || !queryText.trim()) return [];
+  const cleanQuery = queryText.trim();
+  const safeLimit = Math.max(1, parseInt(limit, 10) || 2);
+
+  // 提取查询关键词与 CJK N-grams / 字母专有名词
+  const candidateTerms = extractCandidateNgrams(cleanQuery);
+  const explicitTokens = cleanQuery
+    .replace(/['"*\(\)\{\}\[\]\^\:\+\-\?！!，,。]/g, " ")
+    .split(/\s+/)
+    .filter(t => t.length >= 2);
+  // 长度优先排序，取前 20 个最具辨识度的关键词
+  const tokens = Array.from(new Set([...candidateTerms, ...explicitTokens]))
+    .filter(t => t.length >= 2)
+    .sort((a, b) => b.length - a.length)
+    .slice(0, 20);
+
+  // 1. 优先尝试 FTS5 全文搜索与 BM25 排序 (必须具备非空回复)
+  if (fts5Supported && tokens.length > 0) {
+    try {
+      const matchExpr = tokens.map(t => `"${t.replace(/"/g, '""')}"*`).join(" OR ");
+      const rows = db.prepare(`
+        SELECT e.id, e.session_key, e.user_id, e.user_name, e.user_message, e.reply_message, e.context_summary, e.keywords, e.created_at, f.rank
+        FROM tulpa_episodes e
+        JOIN tulpa_episodes_fts f ON e.id = f.rowid
+        WHERE tulpa_episodes_fts MATCH ?
+          AND e.reply_message IS NOT NULL 
+          AND e.reply_message != ''
+        ORDER BY f.rank
+        LIMIT ?
+      `).all(matchExpr, safeLimit);
+
+      if (rows && rows.length > 0) {
+        return rows;
+      }
+    } catch (err) {
+      // 若 FTS5 出错，降级走 LIKE
+    }
+  }
+
+  // 2. 降级：使用标准 SQL LIKE 匹配 (必须具备非空回复)
+  try {
+    if (tokens.length > 0) {
+      const whereClauses = tokens.map(() => `(user_message LIKE ? ESCAPE '\\' OR reply_message LIKE ? ESCAPE '\\' OR keywords LIKE ? ESCAPE '\\')`).join(" OR ");
+      const params = [];
+      for (const t of tokens) {
+        const escaped = t.replace(/([%_\\])/g, "\\$1");
+        const pattern = `%${escaped}%`;
+        params.push(pattern, pattern, pattern);
+      }
+      params.push(safeLimit);
+
+      const rows = db.prepare(`
+        SELECT id, session_key, user_id, user_name, user_message, reply_message, context_summary, keywords, created_at
+        FROM tulpa_episodes
+        WHERE (${whereClauses})
+          AND reply_message IS NOT NULL 
+          AND reply_message != ''
+        ORDER BY id DESC
+        LIMIT ?
+      `).all(...params);
+
+      if (rows && rows.length > 0) {
+        return rows;
+      }
+    }
+
+    // 3. 兜底：返回最新 1~2 条真实已回复对话样本
+    return db.prepare(`
+      SELECT id, session_key, user_id, user_name, user_message, reply_message, context_summary, keywords, created_at
+      FROM tulpa_episodes
+      WHERE reply_message IS NOT NULL AND reply_message != ''
+      ORDER BY id DESC
+      LIMIT ?
+    `).all(safeLimit);
+  } catch (err) {
+    return [];
+  }
+}
+
+/**
+ * 获取最近的 Tulpa 对话情境切片
+ */
+export function getRecentTulpaEpisodes(limit = 5) {
+  if (!db) return [];
+  try {
+    return db.prepare(`
+      SELECT id, session_key, user_id, user_name, user_message, reply_message, context_summary, keywords, created_at
+      FROM tulpa_episodes
+      ORDER BY id DESC
+      LIMIT ?
+    `).all(Math.max(1, parseInt(limit, 10) || 5));
+  } catch {
+    return [];
+  }
+}
+
+// -------------------------------------------------------------
 // 群组管理中心 (Group Management)
 // -------------------------------------------------------------
 
 /**
- * 确保默认群组写入 managed_groups（幂等写入，补全缺失群号）
+ * 确保默认群组写入 managed_groups（幂等写入，补全缺失群号与微信群）
  */
 export function initManagedGroups(defaultGroupIds = []) {
   if (Array.isArray(defaultGroupIds)) {
-    const stmt = db.prepare("INSERT OR IGNORE INTO managed_groups (group_id, group_name, enabled, trigger_policy) VALUES (?, ?, 1, 'all')");
+    const stmt = db.prepare("INSERT OR IGNORE INTO managed_groups (group_id, group_name, enabled, trigger_policy, platform) VALUES (?, ?, 1, 'all', 'qq')");
     for (const gid of defaultGroupIds) {
       if (gid) {
         stmt.run(Number(gid), `群聊 ${gid}`);
       }
     }
   }
+  // 确保默认微信白名单“道馆馆”存在于 managed_groups
+  try {
+    const wechatStmt = db.prepare("INSERT OR IGNORE INTO managed_groups (group_id, group_name, enabled, trigger_policy, platform) VALUES (?, ?, 1, 'all', 'wechat')");
+    wechatStmt.run(999001, "道馆馆");
+  } catch {}
 }
 
 /**
- * 获取所有被管理的群组列表，含发言量与最后活跃时间
+ * 动态为微信群计算或分配唯一的 99xxxx 虚拟群信道 ID
+ */
+export function allocateWechatGroupId(roomName) {
+  const cleanName = String(roomName || "").trim();
+  if (!cleanName) return 990001;
+
+  // 1. 若已有该微信群，直接复用既有 ID
+  const existing = db.prepare("SELECT group_id FROM managed_groups WHERE platform = 'wechat' AND group_name = ?").get(cleanName);
+  if (existing) return existing.group_id;
+
+  // 2. 尝试基于名称 Hash 生成 990000 ~ 998999
+  let hash = 0;
+  for (let i = 0; i < cleanName.length; i++) hash = (hash * 31 + cleanName.charCodeAt(i)) & 0x7fffffff;
+  const candidate = 990000 + (hash % 9000);
+  const conflict = db.prepare("SELECT group_id FROM managed_groups WHERE group_id = ?").get(candidate);
+  if (!conflict) return candidate;
+
+  // 3. 若冲突，自动取 990001 起的最大空闲 ID
+  const row = db.prepare("SELECT MAX(group_id) as max_id FROM managed_groups WHERE group_id >= 990000 AND group_id < 999999").get();
+  return (row && row.max_id) ? row.max_id + 1 : 990001;
+}
+
+/**
+ * 获取所有被管理的群组列表，含平台类型、发言量与最后活跃时间
  */
 export function getManagedGroups() {
   const rows = db.prepare(`
-    SELECT g.group_id, g.group_name, g.enabled, g.trigger_policy, g.created_at, g.updated_at,
+    SELECT g.group_id, g.group_name, g.enabled, g.trigger_policy, g.platform, g.created_at, g.updated_at,
            (SELECT COUNT(*) FROM chat_messages m WHERE m.session_key = 'group:' || g.group_id) as message_count,
            (SELECT MAX(created_at) FROM chat_messages m WHERE m.session_key = 'group:' || g.group_id) as last_active
     FROM managed_groups g
     ORDER BY g.group_id ASC
   `).all();
-  return rows.map(r => ({
-    ...r,
-    enabled: Boolean(r.enabled)
-  }));
+  return rows.map(r => {
+    const gid = Number(r.group_id);
+    const isWechat = r.platform === "wechat" || (gid >= 990000 && gid <= 999999) || String(r.group_name || "").startsWith("微信");
+    return {
+      ...r,
+      enabled: Boolean(r.enabled),
+      platform: isWechat ? "wechat" : "qq"
+    };
+  });
 }
 
 /**
  * 获取指定群组配置
  */
 export function getManagedGroup(groupId) {
-  const row = db.prepare("SELECT group_id, group_name, enabled, trigger_policy FROM managed_groups WHERE group_id = ?").get(Number(groupId));
+  const row = db.prepare("SELECT group_id, group_name, enabled, trigger_policy, platform FROM managed_groups WHERE group_id = ?").get(Number(groupId));
   if (!row) return null;
-  return { ...row, enabled: Boolean(row.enabled) };
+  const gid = Number(row.group_id);
+  const isWechat = row.platform === "wechat" || (gid >= 990000 && gid <= 999999) || String(row.group_name || "").startsWith("微信");
+  return {
+    ...row,
+    enabled: Boolean(row.enabled),
+    platform: isWechat ? "wechat" : "qq"
+  };
 }
 
 /**
  * 保存或更新群组配置
  */
-export function saveManagedGroup(groupId, groupName = "", enabled = true, triggerPolicy = "all") {
+export function saveManagedGroup(groupId, groupName = "", enabled = true, triggerPolicy = "all", platform = null) {
   const gid = Number(groupId);
   const existing = getManagedGroup(gid);
   const name = String((groupName !== undefined && groupName !== "") ? groupName : (existing?.group_name || `群聊 ${gid}`));
   const en = enabled ? 1 : 0;
   const policy = triggerPolicy === "strict" ? "strict" : "all";
+  const isWechat = platform === "wechat" || existing?.platform === "wechat" || (gid >= 990000 && gid <= 999999) || name.startsWith("微信");
+  const targetPlatform = platform || existing?.platform || (isWechat ? "wechat" : "qq");
 
   const stmt = db.prepare(`
-    INSERT INTO managed_groups (group_id, group_name, enabled, trigger_policy, updated_at)
-    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+    INSERT INTO managed_groups (group_id, group_name, enabled, trigger_policy, platform, updated_at)
+    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     ON CONFLICT(group_id) DO UPDATE SET
       group_name = excluded.group_name,
       enabled = excluded.enabled,
       trigger_policy = excluded.trigger_policy,
+      platform = excluded.platform,
       updated_at = CURRENT_TIMESTAMP
   `);
-  stmt.run(gid, name, en, policy);
+  stmt.run(gid, name, en, policy, targetPlatform);
   return getManagedGroup(gid);
 }
 
@@ -1377,7 +1966,22 @@ export function pruneOldRecords(days = 30) {
       deletedCount += (inboxRes.changes || 0);
     } catch {}
 
-    console.log(`🧹 [SQLite 自动归档] 成功清理超过 ${safeDays} 天的历史流水日志 (共 ${deletedCount} 条)`);
+    // 维持各群最多 200 条轻量历史
+    try {
+      deletedCount += trimChatMessages(null, 200);
+    } catch {}
+
+    // 清理超过 30 天且仅出现过 1 次的偶发黑话碎片
+    try {
+      const slangStmt = db.prepare(`DELETE FROM group_slangs WHERE frequency = 1 AND last_seen < datetime('now', '-' || ? || ' days')`);
+      const slangRes = slangStmt.run(safeDays);
+      deletedCount += (slangRes.changes || 0);
+    } catch {}
+
+    // 触发 WAL Checkpoint 截断归档
+    checkpointDatabase("TRUNCATE");
+
+    console.log(`🧹 [SQLite 自动归档] 成功清理超过 ${safeDays} 天的历史流水日志 (共 ${deletedCount} 条) 并完成 WAL 截断`);
     return deletedCount;
   } catch (err) {
     console.warn(`[SQLite 自动归档失败]:`, err.message);
@@ -1386,3 +1990,14 @@ export function pruneOldRecords(days = 30) {
 }
 
 export { getAntigravityBrainTokenStats } from "./antigravity-discovery.mjs";
+
+const isMain = Boolean(process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url));
+if (isMain) {
+  const isInitCmd = process.argv.includes("--init");
+  console.log(`[SQLite] 数据库初始化成功: ${getDatabasePath()}`);
+  if (isInitCmd) {
+    const checkpointRes = checkpointDatabase("TRUNCATE");
+    console.log(`[SQLite] WAL Checkpoint (TRUNCATE) 执行完成:`, checkpointRes || { busy: 0, log: 0, checkpointed: 0 });
+  }
+}
+

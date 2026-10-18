@@ -18,8 +18,8 @@ try {
 
 # 2. 检查 SQLite 数据区
 if (-not (Test-Path "data/state.db")) {
-    Write-Host "[*] 正在初始化本地 SQLite 数据区..." -ForegroundColor Yellow
-    node --experimental-sqlite test/test-db.mjs
+    Write-Host "[*] 正在初始化本地 SQLite 数据区与建表..." -ForegroundColor Yellow
+    node --experimental-sqlite src/db.mjs --init
 } else {
     Write-Host "[✓] 本地 SQLite 数据区就绪" -ForegroundColor Green
 }

@@ -315,6 +315,31 @@ const cleanData = await cleanResp.json();
 assert.strictEqual(cleanData.success, true);
 assert.strictEqual(cleanData.count, 0, "一键清空后图片缓存数应为 0");
 
+// 4.6.2 测试 /images 路由安全鉴权 (未授权访问拦截、大小写绕过防御与合法 Token 放行)
+const dummyImgPath = path.join(testImgDir, "secure_test.png");
+fs.writeFileSync(dummyImgPath, "dummy image binary content");
+try {
+  const unauthImgResp = await fetch(`http://127.0.0.1:${testPort}/images/secure_test.png`);
+  assert.strictEqual(unauthImgResp.status, 401, "/images 未附带 Token 时必须被安全拦截并返回 401");
+
+  // 大小写混淆绕过防御测试
+  const uppercaseImgResp = await fetch(`http://127.0.0.1:${testPort}/Images/secure_test.png`);
+  assert.strictEqual(uppercaseImgResp.status, 401, "/Images 大小写混淆时必须同样被拦截并返回 401");
+  const allCapsImgResp = await fetch(`http://127.0.0.1:${testPort}/IMAGES/secure_test.png`);
+  assert.strictEqual(allCapsImgResp.status, 401, "/IMAGES 全大写必须同样被拦截并返回 401");
+
+  const unauthApiResp = await fetch(`http://127.0.0.1:${testPort}/API/groups`);
+  assert.strictEqual(unauthApiResp.status, 401, "/API/groups 大小写混淆未授权访问必须被拦截并返回 401");
+
+  const queryAuthImgResp = await fetch(`http://127.0.0.1:${testPort}/images/secure_test.png?token=${testAdminToken}`);
+  assert.strictEqual(queryAuthImgResp.status, 200, "/images 附带合法 Query Token 应成功访问并返回 200");
+
+  const headerAuthImgResp = await fetch(`http://127.0.0.1:${testPort}/images/secure_test.png`, { headers: authHeaders });
+  assert.strictEqual(headerAuthImgResp.status, 200, "/images 附带合法 Auth Header 应成功访问并返回 200");
+} finally {
+  try { fs.unlinkSync(dummyImgPath); } catch {}
+}
+
 // 4.7 测试本地离线静态资源托管 (vendor/ scripts)
 const vueAssetResp = await fetch(`http://127.0.0.1:${testPort}/vendor/vue.global.prod.js`);
 assert.strictEqual(vueAssetResp.status, 200, "本地离线 Vue 脚本应正确托管返回 200");

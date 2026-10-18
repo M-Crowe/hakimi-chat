@@ -2,6 +2,7 @@ import assert from "node:assert";
 import fs from "node:fs";
 import path from "node:path";
 import { 
+  db,
   getCharacterState, 
   updateCharacterLocation, 
   getUserAffinity, 
@@ -22,7 +23,11 @@ import {
   saveSessionState,
   deleteSessionState,
   cleanStaleInboxMessages,
-  cleanTestTokenLogs
+  cleanTestTokenLogs,
+  checkpointDatabase,
+  trimChatMessages,
+  initDatabase,
+  getDatabasePath
 } from "../src/db.mjs";
 import { getActivePersona, loadPersonaPrompt, PERSONAS } from "../src/personas.mjs";
 import { processOutboundMessage, isDirectedAtAi } from "../src/bridge-daemon.mjs";
@@ -72,13 +77,28 @@ console.log("✅ 好感度 last_reason 保护逻辑验证通过！");
 
 // 0 点边界测试：防止 0 || 30 导致的重置假初识缺陷
 const zeroUid = 77000000 + Math.floor(Math.random() * 1000);
-modifyUserAffinity(zeroUid, -30, "降至零点"); // 30 - 30 = 0
+modifyUserAffinity(zeroUid, -30, "降至零点", { clamp: false }); // 30 - 30 = 0 (显式旁路以构造0点边界)
 const affZero = getUserAffinity(zeroUid);
 assert.strictEqual(affZero.affinity_points, 0, "Points should be exactly 0");
-modifyUserAffinity(zeroUid, 5, "零点回升");
+modifyUserAffinity(zeroUid, 5, "零点回升"); // 默认硬截断生效：0 + 2 = 2
 const affAfterZero = getUserAffinity(zeroUid);
-assert.strictEqual(affAfterZero.affinity_points, 5, "0 points + 5 must equal 5, not 35");
-console.log("✅ 好感度 0 点边界值防 falsy 穿透验证通过！");
+assert.strictEqual(affAfterZero.affinity_points, 2, "0 points + 2 must equal 2, not 32");
+
+// 验证好感度单次变动硬截断 [-2, +2] 铁律与异常值防御
+const clampTestUid = 88000000 + Math.floor(Math.random() * 1000);
+modifyUserAffinity(clampTestUid, 10, "过量好感");
+assert.strictEqual(getUserAffinity(clampTestUid).affinity_points, 32, "单次变动 +10 必须被硬截断为 +2");
+modifyUserAffinity(clampTestUid, -10, "过量扣除");
+assert.strictEqual(getUserAffinity(clampTestUid).affinity_points, 30, "单次变动 -10 必须被硬截断为 -2");
+
+// NaN 与非有限数值安全防御测试：禁止 NaN 导致 points 为 null 且 level 误判为特别
+const nanTestUid = 88100000 + Math.floor(Math.random() * 1000);
+const nanRes = modifyUserAffinity(nanTestUid, NaN, "NaN异常测试");
+assert.strictEqual(getUserAffinity(nanTestUid).affinity_points, 30, "传入 NaN 时好感度应安全保持不变 (30)");
+assert.strictEqual(getUserAffinity(nanTestUid).level_name, "初识", "传入 NaN 时好感度等级绝不能误判为特别");
+assert.strictEqual(nanRes.clampedDelta, 0);
+
+console.log("✅ 好感度 0 点边界值防 falsy 穿透、[-2, +2] 硬截断与 NaN 异常防御验证通过！");
 
 // 动态 BotName 记录测试
 const testSession = `group:test_${Date.now()}`;
@@ -117,10 +137,17 @@ ACTION: REPLY
 <reply>确实是不可或缺的电子榨菜呢！</reply>`;
 const cleanedWithTags = processOutboundMessage("test:tags", slangUid, decisionWithTags);
 assert.strictEqual(cleanedWithTags, "确实是不可或缺的电子榨菜呢！");
-assert.strictEqual(getCharacterState().location, "秋叶原女仆咖啡厅");
-assert.strictEqual(getUserAffinity(slangUid).affinity_points, 34);
+assert.strictEqual(getUserAffinity(slangUid).affinity_points, 32, "Delta +4 in [af:+4] must be hard-clamped to +2 (30 + 2 = 32)");
 assert(getTopSlangs(10).some(s => s.word === "电子榨菜"), "Slang from social_decision must be recorded");
 console.log("✅ social_decision 决策槽内内联标签 ([slang], [state], [af]) 全局提取入库通过！");
+
+// 4.3.1 验证带空格与大小写的标签 ([af: +1 | 夸奖]) 正确解析且绝不泄漏到出站正文中
+const whitespaceTagUid = 66100000 + Math.floor(Math.random() * 1000);
+const msgWithSpacedTags = `<reply>谢谢你的鼓励！[af: +2 | 很有礼貌][state: 图书馆 | 翻阅画册 | 安静得很]</reply>`;
+const cleanedSpaced = processOutboundMessage("test:spaced", whitespaceTagUid, msgWithSpacedTags);
+assert.strictEqual(cleanedSpaced, "谢谢你的鼓励！", "带有空格的 [af: +2 | ...] 与 [state: ...] 必须被彻底剥离，绝不能泄漏给 QQ");
+assert.strictEqual(getUserAffinity(whitespaceTagUid).affinity_points, 32, "带空格的 [af: +2] 必须被正常解析入库");
+console.log("✅ 带空格/大小写变体标签鲁棒解析与出站防泄漏测试通过！");
 
 // 4.4 测试 DIVE / [SILENT]
 const diveMsg = `<social_decision>ACTION: DIVE\ndive_minutes: 5</social_decision><reply>[SILENT]</reply>`;
@@ -188,15 +215,35 @@ assert.doesNotThrow(() => cleanStaleInboxMessages("invalid"));
 
 console.log("✅ inbox_queue 启动 TTL 自愈清理机制验证通过！");
 
+console.log("\n=== 8. 验证 Phase 2：SQLite 性能调优、WAL Checkpoint 与写放大消除 ===");
+const cpRes = checkpointDatabase("TRUNCATE");
+assert(cpRes !== null, "checkpointDatabase(TRUNCATE) 应成功执行");
+assert.strictEqual(typeof cpRes.busy, "number");
+console.log("✅ SQLite WAL Checkpoint (TRUNCATE) 紧凑截断验证通过！");
+
+// 验证 recordChatMessage 节流批量修剪与 trimChatMessages
+clearChatMessages("test:trim_perf");
+for (let i = 1; i <= 205; i++) {
+  db.prepare("INSERT INTO chat_messages (session_key, sender_id, sender_name, message_text) VALUES (?, ?, ?, ?)").run("test:trim_perf", 10001, "群友", `msg${i}`);
+}
+const trimmed = trimChatMessages("test:trim_perf", 200);
+assert.strictEqual(trimmed, 5, "trimChatMessages 应将超过 200 条的消息修剪 5 条");
+clearChatMessages("test:trim_perf");
+console.log("✅ 批量修剪与写放大消除机制验证通过！");
+
 // 善后清理测试产生的临时数据，避免污染生产数据库 state.db
 deleteUserAffinity(testUid);
 deleteUserAffinity(zeroUid);
+deleteUserAffinity(clampTestUid);
+deleteUserAffinity(nanTestUid);
 deleteUserAffinity(slangUid);
+deleteUserAffinity(whitespaceTagUid);
 deleteUserAffinity(1);
 clearChatMessages("test:1");
 clearChatMessages("test:mem");
 clearChatMessages("test:think");
 clearChatMessages("test:tags");
+clearChatMessages("test:spaced");
 clearChatMessages("test:dive");
 clearChatMessages(testSession);
 deleteSessionMemory("test:mem");

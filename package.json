@@ -6,12 +6,14 @@
   "main": "src/bridge-daemon.mjs",
   "scripts": {
     "start": "node --experimental-sqlite src/bridge-daemon.mjs",
-    "test": "node --experimental-sqlite --test test/*.mjs",
+    "test": "node --experimental-sqlite --test --test-concurrency=1 test/*.mjs",
     "test-db": "node --experimental-sqlite test/test-db.mjs",
     "test-hakimi": "node --experimental-sqlite test/test-hakimi-web.mjs",
     "test-token": "node --experimental-sqlite test/test-token-upgrade.mjs",
     "test-phase": "node --experimental-sqlite test/test-phase123-upgrade.mjs",
     "test-config": "node --experimental-sqlite test/test-config-api.mjs",
+    "test-tulpa": "node --experimental-sqlite test/test-tulpa-integration.mjs",
+    "test-wechat": "node --experimental-sqlite test/test-wechat-group-management.mjs",
     "setup:dsh": "node scripts/setup-dsh.mjs",
     "test-dsh": "node --experimental-sqlite test/test-dsh-integration.mjs"
   },

@@ -519,7 +519,7 @@ export function parseCliArgs(args = process.argv.slice(2)) {
   if (args.includes("--wechat")) {
     return { mode: "wechat" };
   }
-  if (args.includes("--switch")) {
+  if (args.includes("--switch") || args.includes("--login")) {
     return { mode: "switch" };
   }
   return { mode: null };
@@ -780,13 +780,17 @@ export class HakimiLauncher {
       }
     }
 
-    // 2. Node.js QQ 伴聊大脑核心
-    if (mode === "all" || mode === "qq") {
+    // 2. Node.js 伴聊大脑核心 (在 all, qq, wechat 模式下均运行，负责 Web 看板和 IPC 消息分流)
+    if (mode === "all" || mode === "qq" || mode === "wechat") {
+      const nodeArgs = ["--experimental-sqlite", path.join(this.projectRoot, "src", "bridge-daemon.mjs")];
+      if (mode === "wechat") {
+        nodeArgs.push("--wechat-only");
+      }
       const nodeSupervisor = new ProcessSupervisor({
         name: "Node-Core",
         tag: "Node",
         command: nodeExec,
-        args: ["--experimental-sqlite", path.join(this.projectRoot, "src", "bridge-daemon.mjs")],
+        args: nodeArgs,
         cwd: this.projectRoot,
         logger: this.logger,
         portToClean: 34567
@@ -797,12 +801,24 @@ export class HakimiLauncher {
 
     this.logger.log("Launcher", "===================================================");
     this.logger.log("Launcher", "✅ 哈基米服务矩阵全部拉起，进程守护巡航中");
+    this.logger.log(
+      "Launcher",
+      `• 运行模式: ${
+        mode === "all"
+          ? "全量双轨伴聊 (微信 4.1 + QQ 机器人)"
+          : mode === "wechat"
+          ? "仅微信独立伴聊模式 (WeChat 4.1)"
+          : "仅 QQ 机器人模式"
+      }`
+    );
     this.logger.log("Launcher", "• Web 运维看板: http://127.0.0.1:5120");
     this.logger.log("Launcher", "• 内部 IPC 网关: http://127.0.0.1:34567");
     if (wechatLaunched) {
       this.logger.log("Launcher", "• 微信守护 API: http://127.0.0.1:34568/health");
+      this.logger.log("Launcher", "📱 [微信登录提示]: 微信运行在物理隔离的后台虚拟桌面中。");
+      this.logger.log("Launcher", "   首次使用若尚未登录，请在启动菜单选择 [4] 切换桌面扫码，或运行 start.bat --login");
     } else {
-      this.logger.log("Launcher", "• 微信守护状态: 未启用 (当前运行纯 QQ/Web 模式)");
+      this.logger.log("Launcher", "• 微信守护状态: 未启用 (运行纯 QQ/Web 模式)");
     }
     this.logger.log("Launcher", "• 日志轮转路径: logs/hakimi.log (10MB 自动轮转保留5份)");
     this.logger.log("Launcher", "• 退出服务: 按 Ctrl+C 即可级联退出并释放所有端口");
@@ -818,10 +834,11 @@ export async function promptMenu() {
   console.log("    哈基米聊天系统 (Hakimi Launcher) 控制总管");
   console.log("===================================================");
   console.log("请选择启动模式:");
-  console.log("  [1] 全量伴聊模式 (Node.js QQ + Python 微信4.1) [默认]");
-  console.log("  [2] 仅 QQ 模式 (Node.js QQ 核心)");
-  console.log("  [3] 切换微信虚拟桌面 (穿梭器)");
-  console.log("  [4] 退出");
+  console.log("  [1] 全量双轨伴聊 (微信 4.1 + QQ 机器人 + Web 看板) [默认]");
+  console.log("  [2] 仅微信模式 (微信 4.1 独立伴聊 + Web 看板) ⭐ 推荐");
+  console.log("  [3] 仅 QQ 模式 (QQ 机器人 + Web 看板)");
+  console.log("  [4] 登录微信 / 切换虚拟桌面 (首次扫码登录与窗口管理) 📱");
+  console.log("  [5] 退出");
   console.log("===================================================");
 
   const rl = readline.createInterface({
@@ -836,13 +853,14 @@ export async function promptMenu() {
       process.exit(0);
     });
 
-    rl.question("请输入选项 [1-4] (直接回车默认选择 [1]): ", (answer) => {
+    rl.question("请输入选项 [1-5] (直接回车默认选择 [1]): ", (answer) => {
       rl.close();
       const choice = (answer || "1").trim();
       if (choice === "1") resolve("all");
-      else if (choice === "2") resolve("qq");
-      else if (choice === "3") resolve("switch");
-      else if (choice === "4") resolve("exit");
+      else if (choice === "2") resolve("wechat");
+      else if (choice === "3") resolve("qq");
+      else if (choice === "4") resolve("switch");
+      else if (choice === "5") resolve("exit");
       else {
         console.log("⚠️ 无效输入，默认进入全量伴聊模式 [1]");
         resolve("all");
@@ -865,11 +883,11 @@ if (isDirectExecution) {
   node scripts/launcher.mjs [选项]
 
 选项:
-  --all      全量启动 (Node.js QQ + Python 微信4.1) [默认]
-  --qq       仅启动 QQ 核心服务 (Port 34567, 5120)
-  --wechat   仅启动微信后台守护服务 (Port 34568)
-  --switch   调起微信虚拟桌面穿梭器
-  --help, -h 显示此帮助信息
+  --all           全量双轨伴聊 (微信 4.1 + QQ 机器人 + Web 看板) [默认]
+  --wechat        仅微信独立伴聊模式 (微信 4.1 伴聊 + Web 看板)
+  --qq            仅启动 QQ 核心服务 (Port 34567, 5120)
+  --login, --switch 调起微信后台虚拟桌面穿梭器 (用于首次扫码登录或窗口管理)
+  --help, -h      显示此帮助信息
 `);
     process.exit(0);
   }

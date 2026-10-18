@@ -202,10 +202,10 @@ chmod +x start.sh && ./start.sh
 
 **命令行快捷参数（跳过菜单直接启动）**：
 ```bash
-npm run start:all       # 全量伴聊模式 (Node.js QQ + Python 微信4.1)
+npm run start:wechat    # ⭐ 仅微信独立伴聊模式 (微信 4.1 + Web 看板，无需 QQ)
+npm run login:wechat    # 📱 调起微信虚拟桌面穿梭器 (首次扫码登录微信与窗口管理)
+npm run start:all       # 全量双轨伴聊 (微信 4.1 + QQ 机器人 + Web 看板)
 npm run start:qq        # 仅启动 QQ 核心服务 (Port 34567, 5120)
-npm run start:wechat    # 仅启动微信后台守护服务 (Port 34568)
-npm run switch:desktop  # 调起微信后台虚拟桌面穿梭器 (Windows)
 ```
 
 > **提示**：启动脚本内置全自动依赖自检与智能容错。首次运行若检测到缺失 `node_modules` 会自动执行 `npm install` 并初始化数据库。

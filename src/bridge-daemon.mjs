@@ -2036,7 +2036,13 @@ if (isMain) {
   internalServer.listen(config.daemon.internalHttpPort, "127.0.0.1", () => {
     console.log(`[Bridge Daemon] 内部通信网关已就绪，端口: 127.0.0.1:${config.daemon.internalHttpPort}`);
   });
-  connectSnowLuma();
+
+  const isWechatOnly = process.argv.includes("--wechat-only") || process.env.HAKIMI_MODE === "wechat";
+  if (isWechatOnly) {
+    console.log("[Bridge Daemon] 📱 正在以【纯微信伴聊模式】运行，已跳过 QQ 连接，微信网关与 Web 看板全面就绪。");
+  } else {
+    connectSnowLuma();
+  }
   startPatrolScheduler();
 
   // 启动统一 Web 管理端 (Port 5120)

@@ -30,7 +30,39 @@ user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
 GENERIC_ALL = 0x10000000
 DESKTOP_NAME = "WeChatBotDesktop"
-WEIXIN_PATH = r"D:\Program Files\Tencent\Weixin\Weixin.exe"
+
+def find_weixin_path():
+    candidates = [
+        os.environ.get("WEIXIN_PATH"),
+        r"C:\Program Files\Tencent\Weixin\Weixin.exe",
+        r"C:\Program Files (x86)\Tencent\Weixin\Weixin.exe",
+        r"D:\Program Files\Tencent\Weixin\Weixin.exe",
+        r"D:\Program Files (x86)\Tencent\Weixin\Weixin.exe",
+        r"E:\Program Files\Tencent\Weixin\Weixin.exe",
+        r"E:\Program Files (x86)\Tencent\Weixin\Weixin.exe",
+    ]
+    try:
+        import winreg
+        for root in [winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE]:
+            for subkey in [r"Software\Tencent\Weixin", r"SOFTWARE\WOW6432Node\Tencent\Weixin"]:
+                try:
+                    k = winreg.OpenKey(root, subkey)
+                    val, _ = winreg.QueryValueEx(k, "InstallPath")
+                    winreg.CloseKey(k)
+                    if val:
+                        p = os.path.join(val, "Weixin.exe")
+                        if os.path.exists(p):
+                            return p
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    for p in candidates:
+        if p and os.path.exists(p):
+            return p
+    return r"C:\Program Files\Tencent\Weixin\Weixin.exe"
+
+WEIXIN_PATH = find_weixin_path()
 NODE_GATEWAY_URL = "http://127.0.0.1:34567/api/wechat/incoming"
 
 # 1. 独占 WeChatBotDesktop 物理隔离桌面

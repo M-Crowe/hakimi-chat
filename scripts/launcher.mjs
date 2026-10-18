@@ -522,6 +522,9 @@ export function parseCliArgs(args = process.argv.slice(2)) {
   if (args.includes("--switch") || args.includes("--login")) {
     return { mode: "switch" };
   }
+  if (args.includes("--close-wechat") || args.includes("--kill-wechat")) {
+    return { mode: "close-wechat" };
+  }
   if (args.includes("--stop") || args.includes("--kill")) {
     return { mode: "stop" };
   }
@@ -715,6 +718,33 @@ export class HakimiLauncher {
     }
   }
 
+  async closeWechatDesktop() {
+    if (process.platform !== "win32") {
+      this.logger.log("Launcher", "⚠️ 微信虚拟桌面隔离仅支持 Windows 系统！", "warn");
+      return;
+    }
+
+    const py = findPythonPath(this.projectRoot);
+    const scriptPath = path.join(this.projectRoot, "scripts", "close-wechat-desktop.py");
+
+    if (py && fs.existsSync(scriptPath)) {
+      try {
+        this.logger.log("Launcher", "🛑 正在彻底切回主桌面并关闭微信虚拟桌面...");
+        execSync(`"${py}" "${scriptPath}"`, {
+          cwd: this.projectRoot,
+          stdio: "inherit"
+        });
+      } catch (err) {
+        this.logger.log("Launcher", `⚠️ 微信虚拟桌面关闭提示: ${err.message}`, "warn");
+      }
+    } else {
+      try {
+        execSync("taskkill /F /IM Weixin.exe", { stdio: "ignore" });
+        this.logger.log("Launcher", "✅ 后台微信进程已结束");
+      } catch {}
+    }
+  }
+
   setupGracefulShutdown() {
     const handleSignal = async (signal) => {
       if (this.isShuttingDown) return;
@@ -887,7 +917,8 @@ export async function promptMenu() {
   console.log("  [2] 仅微信模式 (微信 4.1 独立伴聊 + Web 看板) ⭐ 推荐");
   console.log("  [3] 仅 QQ 模式 (QQ 机器人 + Web 看板)");
   console.log("  [4] 登录微信 / 切换虚拟桌面 (首次扫码登录与窗口管理) 📱");
-  console.log("  [5] 退出");
+  console.log("  [5] 一键关闭微信虚拟桌面 (退出后台微信并彻底销毁隔离桌面) 🛑");
+  console.log("  [6] 退出菜单");
   console.log("===================================================");
 
   const rl = readline.createInterface({
@@ -902,14 +933,15 @@ export async function promptMenu() {
       process.exit(0);
     });
 
-    rl.question("请输入选项 [1-5] (直接回车默认选择 [1]): ", (answer) => {
+    rl.question("请输入选项 [1-6] (直接回车默认选择 [1]): ", (answer) => {
       rl.close();
       const choice = (answer || "1").trim();
       if (choice === "1") resolve("all");
       else if (choice === "2") resolve("wechat");
       else if (choice === "3") resolve("qq");
       else if (choice === "4") resolve("switch");
-      else if (choice === "5") resolve("exit");
+      else if (choice === "5") resolve("close-wechat");
+      else if (choice === "6") resolve("exit");
       else {
         console.log("⚠️ 无效输入，默认进入全量伴聊模式 [1]");
         resolve("all");
@@ -936,7 +968,8 @@ if (isDirectExecution) {
   --wechat          仅微信独立伴聊模式 (微信 4.1 伴聊 + Web 看板)
   --qq              仅启动 QQ 核心服务 (Port 34567, 5120)
   --login, --switch 调起微信后台虚拟桌面穿梭器 (用于首次扫码登录或窗口管理)
-  --stop            一键关闭哈基米所有伴聊服务进程并释放端口
+  --close-wechat    一键关闭后台微信进程并销毁微信虚拟桌面
+  --stop            一键关闭哈基米所有伴聊服务进程、销毁微信桌面并释放端口
   --help, -h        显示此帮助信息
 `);
     process.exit(0);
@@ -960,10 +993,16 @@ if (isDirectExecution) {
 
     const launcher = new HakimiLauncher();
 
+    if (selectedMode === "close-wechat") {
+      await launcher.closeWechatDesktop();
+      process.exit(0);
+    }
+
     if (selectedMode === "stop") {
       console.log("🛑 正在停止哈基米所有伴聊子服务并释放端口 (34567, 5120, 34568)...");
       await PortManager.cleanAll(launcher.ports, launcher.logger);
-      console.log("✅ 所有服务子进程已彻底关闭，端口已全部安全释放！");
+      await launcher.closeWechatDesktop();
+      console.log("✅ 所有服务子进程已彻底关闭，微信虚拟桌面已销毁，端口已全部安全释放！");
       process.exit(0);
     }
 

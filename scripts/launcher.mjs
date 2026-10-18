@@ -35,13 +35,28 @@ export function findPythonPath(projectRoot = PROJECT_ROOT) {
       const venvPy = path.join(projectRoot, venvDir, "Scripts", "python.exe");
       if (fs.existsSync(venvPy)) return venvPy;
     }
-    return "python";
+    try {
+      execSync("where python", { stdio: "ignore" });
+      return "python";
+    } catch {
+      return null;
+    }
   } else {
     for (const venvDir of venvCandidates) {
       const venvPy = path.join(projectRoot, venvDir, "bin", "python");
       if (fs.existsSync(venvPy)) return venvPy;
     }
-    return "python3";
+    try {
+      execSync("which python3", { stdio: "ignore" });
+      return "python3";
+    } catch {
+      try {
+        execSync("which python", { stdio: "ignore" });
+        return "python";
+      } catch {
+        return null;
+      }
+    }
   }
 }
 
@@ -526,26 +541,141 @@ export class HakimiLauncher {
     this.isShuttingDown = false;
   }
 
+  ensureNodeDependencies() {
+    const nodeModulesPath = path.join(this.projectRoot, "node_modules");
+    const wsModulePath = path.join(nodeModulesPath, "ws");
+    if (!fs.existsSync(nodeModulesPath) || !fs.existsSync(wsModulePath)) {
+      this.logger.log("Launcher", "📦 检测到尚未安装 Node.js 核心依赖包，正在自动执行 npm install...", "warn");
+      try {
+        execSync("npm install", {
+          cwd: this.projectRoot,
+          stdio: "inherit"
+        });
+        this.logger.log("Launcher", "✅ Node.js 核心依赖安装成功！");
+      } catch {
+        this.logger.log("Launcher", "⚠️ npm 默认源安装较慢或失败，尝试国内镜像加速安装...", "warn");
+        try {
+          execSync("npm install --registry=https://registry.npmmirror.com", {
+            cwd: this.projectRoot,
+            stdio: "inherit"
+          });
+          this.logger.log("Launcher", "✅ 镜像源安装成功！");
+        } catch (err) {
+          this.logger.log("Launcher", `❌ npm 依赖安装失败: ${err.message}`, "error");
+        }
+      }
+    }
+
+    // 检查 SQLite 数据区初始化
+    const dbPath = path.join(this.projectRoot, "data", "state.db");
+    const dbScriptPath = path.join(this.projectRoot, "src", "db.mjs");
+    if (!fs.existsSync(dbPath) && fs.existsSync(dbScriptPath)) {
+      try {
+        this.logger.log("Launcher", "正在初始化本地持久化数据库 (data/state.db)...");
+        execSync(`"${process.execPath}" --experimental-sqlite "${dbScriptPath}" --init`, {
+          cwd: this.projectRoot,
+          stdio: "ignore"
+        });
+        this.logger.log("Launcher", "✅ 本地数据库初始化完成");
+      } catch {}
+    }
+  }
+
+  ensureWechatEnvironment() {
+    let py = findPythonPath(this.projectRoot);
+
+    const hasUv = (() => {
+      try {
+        execSync(process.platform === "win32" ? "where uv" : "which uv", { stdio: "ignore" });
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+
+    const venvPath = path.join(this.projectRoot, ".venv-wechat");
+    const venvPy = process.platform === "win32"
+      ? path.join(venvPath, "Scripts", "python.exe")
+      : path.join(venvPath, "bin", "python");
+
+    // 若未检测到现成虚拟环境，但系统装有极速包管理器 uv，优先使用 uv 秒级创建环境
+    if (!py && hasUv) {
+      this.logger.log("Launcher", "⚡ 检测到系统已安装 uv，正在使用 uv 秒级初始化 .venv-wechat 虚拟环境...", "warn");
+      try {
+        execSync("uv venv .venv-wechat --python 3.12", { cwd: this.projectRoot, stdio: "inherit" });
+        if (fs.existsSync(venvPy)) {
+          py = venvPy;
+          this.logger.log("Launcher", "✅ uv 虚拟环境创建成功！");
+        }
+      } catch (err) {
+        this.logger.log("Launcher", `⚠️ uv venv 创建跳过: ${err.message}`, "warn");
+      }
+    }
+
+    if (!py) {
+      return { ready: false, reason: "NOT_FOUND" };
+    }
+
+    // 测试核心依赖是否齐全 (win32gui, PIL)
+    try {
+      execSync(`"${py}" -c "import win32gui, PIL"`, { stdio: "ignore" });
+      return { ready: true, py };
+    } catch {
+      // 依赖不齐全，尝试自动安装
+      const reqPath = path.join(this.projectRoot, "requirements-wechat.txt");
+      if (fs.existsSync(reqPath)) {
+        this.logger.log("Launcher", "📦 检测到微信服务缺少必要 Python 库，正在自动安装 (requirements-wechat.txt)...", "warn");
+        try {
+          if (hasUv) {
+            // 优先使用 uv 极速安装
+            execSync(`uv pip install -r "${reqPath}" --python "${py}"`, {
+              cwd: this.projectRoot,
+              stdio: "inherit"
+            });
+          } else {
+            // 标准 pip 安装
+            execSync(`"${py}" -m pip install -r "${reqPath}" -i https://pypi.tuna.tsinghua.edu.cn/simple`, {
+              cwd: this.projectRoot,
+              stdio: "inherit"
+            });
+          }
+          return { ready: true, py };
+        } catch (err) {
+          this.logger.log("Launcher", `⚠️ 微信 Python 依赖自动安装未完全成功: ${err.message}`, "warn");
+          return { ready: false, reason: "INSTALL_FAILED" };
+        }
+      }
+      return { ready: false, reason: "MISSING_MODULES" };
+    }
+  }
+
   async initEnvironment() {
     this.logger.log("Launcher", "===================================================");
     this.logger.log("Launcher", "🚀 哈基米聊天系统 (Hakimi Launcher) 守护总管启动中");
     this.logger.log("Launcher", "===================================================");
 
-    // 检查并自动清理端口占用
+    // 1. 检查并确保 Node.js 基础依赖环境
+    this.ensureNodeDependencies();
+
+    // 2. 检查并自动清理端口占用
     this.logger.log("Launcher", `正在检查并清理服务端口占用 (${this.ports.join(", ")})...`);
     await PortManager.cleanAll(this.ports, this.logger);
     this.logger.log("Launcher", "✅ 所有服务端口检查就绪");
   }
 
   async runDesktopSwitcher() {
-    const py = findPythonPath(this.projectRoot);
-    const scriptPath = path.join(this.projectRoot, "scripts", "desktop-switcher.py");
-
     if (process.platform !== "win32") {
       this.logger.log("Launcher", "⚠️ 微信虚拟桌面隔离仅支持 Windows 系统平台！", "warn");
       return;
     }
 
+    const py = findPythonPath(this.projectRoot);
+    if (!py) {
+      this.logger.log("Launcher", "❌ [错误] 未检测到 Python 环境，无法调起桌面穿梭器。请先安装 Python 3.10+ 并勾选 Add to PATH。", "error");
+      return;
+    }
+
+    const scriptPath = path.join(this.projectRoot, "scripts", "desktop-switcher.py");
     this.logger.log("Launcher", "正在启动微信虚拟桌面穿梭器...");
     const child = spawn(py, [scriptPath], {
       cwd: this.projectRoot,
@@ -606,23 +736,36 @@ export class HakimiLauncher {
     await this.initEnvironment();
     this.setupGracefulShutdown();
 
-    const py = findPythonPath(this.projectRoot);
     const nodeExec = process.execPath;
+    let wechatLaunched = false;
 
     // 1. WeChat 微信子进程
     if (mode === "all" || mode === "wechat") {
       if (process.platform === "win32") {
-        const wechatSupervisor = new ProcessSupervisor({
-          name: "WeChat-Service",
-          tag: "WeChat",
-          command: py,
-          args: ["-u", path.join(this.projectRoot, "scripts", "wechat-service.py")],
-          cwd: this.projectRoot,
-          logger: this.logger,
-          portToClean: 34568
-        });
-        this.supervisors.push(wechatSupervisor);
-        wechatSupervisor.start();
+        const wechatEnv = this.ensureWechatEnvironment();
+        if (wechatEnv.ready) {
+          const wechatSupervisor = new ProcessSupervisor({
+            name: "WeChat-Service",
+            tag: "WeChat",
+            command: wechatEnv.py,
+            args: ["-u", path.join(this.projectRoot, "scripts", "wechat-service.py")],
+            cwd: this.projectRoot,
+            logger: this.logger,
+            portToClean: 34568
+          });
+          this.supervisors.push(wechatSupervisor);
+          wechatSupervisor.start();
+          wechatLaunched = true;
+        } else {
+          if (mode === "wechat") {
+            this.logger.log("Launcher", "❌ [错误] 无法启动微信服务: 未检测到可用的 Python 运行环境或依赖安装失败。", "error");
+            this.logger.log("Launcher", "💡 请安装 Python 3.10+ (勾选 Add to PATH) 并执行: pip install -r requirements-wechat.txt", "warn");
+            return;
+          } else {
+            this.logger.log("Launcher", "⚠️ [提示] 未检测到就绪的 Python 微信运行环境，微信伴聊服务已自动跳过。", "warn");
+            this.logger.log("Launcher", "💡 系统已平滑降级为纯 QQ/Web 模式。(如需微信伴聊，安装 Python 3.10+ 后运行: pip install -r requirements-wechat.txt)", "warn");
+          }
+        }
       } else {
         this.logger.log("Launcher", "⚠️ 检测到非 Windows 系统，微信虚拟桌面服务跳过，仅运行 Node 核心。", "warn");
       }
@@ -647,8 +790,10 @@ export class HakimiLauncher {
     this.logger.log("Launcher", "✅ 哈基米服务矩阵全部拉起，进程守护巡航中");
     this.logger.log("Launcher", "• Web 运维看板: http://127.0.0.1:5120");
     this.logger.log("Launcher", "• 内部 IPC 网关: http://127.0.0.1:34567");
-    if (mode === "all" || mode === "wechat") {
+    if (wechatLaunched) {
       this.logger.log("Launcher", "• 微信守护 API: http://127.0.0.1:34568/health");
+    } else {
+      this.logger.log("Launcher", "• 微信守护状态: 未启用 (当前运行纯 QQ/Web 模式)");
     }
     this.logger.log("Launcher", "• 日志轮转路径: logs/hakimi.log (10MB 自动轮转保留5份)");
     this.logger.log("Launcher", "• 退出服务: 按 Ctrl+C 即可级联退出并释放所有端口");

@@ -198,11 +198,12 @@ npm run start:wechat    # 仅启动微信后台守护服务 (Port 34568)
 npm run switch:desktop  # 调起微信后台虚拟桌面穿梭器 (Windows)
 ```
 
-> **提示**：若使用微信 4.1 伴聊，首次使用需初始化 Python 虚拟环境与依赖：
+> **提示**：启动脚本内置全自动依赖自检与智能容错。首次运行若检测到缺失 `node_modules` 会自动执行 `npm install` 并初始化数据库。
+> 若需使用微信 4.1 伴聊，需安装 Python 3.10+ (安装时勾选 Add to PATH)，并安装依赖：
 > ```bash
-> python -m venv .venv-wechat
-> .venv-wechat\Scripts\pip install pywin32 pillow wechatauto
+> pip install -r requirements-wechat.txt
 > ```
+> 若当前环境未安装 Python，启动器会自动安全跳过微信伴聊子服务，并平滑降级为纯 QQ/Web 核心模式，避免崩溃。
 
 ### 4. 访问 Web 控制台
 浏览器访问：`http://127.0.0.1:5120`

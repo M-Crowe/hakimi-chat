@@ -776,6 +776,22 @@ export function createWebServer({ config, eventBus, daemonApi }) {
     }
   });
 
+  app.post("/api/system/logs", (req, res) => {
+    try {
+      const { level = "info", text, message } = req.body || {};
+      const msgText = text || message || "";
+      if (daemonApi?.captureLog) {
+        daemonApi.captureLog(level, msgText);
+      } else if (eventBus) {
+        const entry = { time: new Date().toLocaleTimeString(), level, text: msgText, message: msgText };
+        eventBus.emit("broadcast", { type: "system_log", data: entry });
+      }
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   app.get("/api/system/config", (req, res) => {
     try {
       const cfg = daemonApi?.getConfig?.() || config;

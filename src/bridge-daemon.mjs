@@ -530,6 +530,14 @@ const internalServer = http.createServer((req, res) => {
         return;
       }
 
+      if (req.url === "/api/system/logs" || req.url === "/api/wechat/log") {
+        const { level = "info", text, message } = data;
+        captureLog(level, text || message || "");
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ success: true }));
+        return;
+      }
+
       if (req.url === "/send-message") {
         const sessionKey = data.sessionKey || (data.targetType && data.targetId ? `${data.targetType}:${data.targetId}` : null);
         const senderId = data.senderId != null ? Number(data.senderId) : (data.targetType === "private" ? Number(data.targetId) : undefined);
@@ -1968,6 +1976,7 @@ const daemonApi = {
     return config;
   },
   getLogBuffer: () => logBuffer,
+  captureLog: (level, ...args) => captureLog(level, ...args),
   cleanImages: (maxKeep = (config.chatBehavior?.maxImages ?? 15)) => cleanImagesFifo(maxKeep),
   reloadWechatGroupMaps: () => reloadWechatGroupMaps(),
   syncWechatGroup: async (action, roomName) => await syncWechatListenToDaemon(action, roomName),

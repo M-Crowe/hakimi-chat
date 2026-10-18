@@ -5,7 +5,11 @@
   "type": "module",
   "main": "src/bridge-daemon.mjs",
   "scripts": {
-    "start": "node --experimental-sqlite src/bridge-daemon.mjs",
+    "start": "node scripts/launcher.mjs",
+    "start:all": "node scripts/launcher.mjs --all",
+    "start:qq": "node scripts/launcher.mjs --qq",
+    "start:wechat": "node scripts/launcher.mjs --wechat",
+    "switch:desktop": "node scripts/launcher.mjs --switch",
     "test": "node --experimental-sqlite --test --test-concurrency=1 test/*.mjs",
     "test-db": "node --experimental-sqlite test/test-db.mjs",
     "test-hakimi": "node --experimental-sqlite test/test-hakimi-web.mjs",

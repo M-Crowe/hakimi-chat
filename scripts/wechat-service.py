@@ -102,6 +102,18 @@ def _capture_window_region(hwnd: int, box=None):
     return image
 
 import wechatauto
+from wechatauto.logger import wxlog
+import logging
+
+# 静默 wechatauto 底层频繁的 UIA 物化与扫描 INFO 刷屏日志
+try:
+    if hasattr(wxlog, 'console_handler') and wxlog.console_handler:
+        wxlog.console_handler.setLevel(logging.WARNING)
+    logging.getLogger('wechatauto').setLevel(logging.WARNING)
+    logging.getLogger().setLevel(logging.WARNING)
+except Exception:
+    pass
+
 from wechatauto.guia import WeChatGUI
 from wechatauto.uia_driver import WeChatUIA, _title_is_main
 from wechatauto.accessibility import AccessibilityGate
@@ -424,7 +436,6 @@ def uia_polling_loop():
     while True:
         try:
             if g_main_hwnd:
-                AccessibilityGate._hot_activate_accessibility(g_main_hwnd)
                 win = auto.ControlFromHandle(g_main_hwnd)
 
                 def find_lv(c):
@@ -438,6 +449,8 @@ def uia_polling_loop():
 
                 lv = find_lv(win)
                 if not lv:
+                    # 仅在找不到 RecyclerListView 树时才热激活一次，避免每秒无脑重复激活刷屏
+                    AccessibilityGate._hot_activate_accessibility(g_main_hwnd)
                     ensure_chat_active(win, "道馆馆")
                     time.sleep(0.3)
                     lv = find_lv(win)

@@ -177,31 +177,32 @@ cp config.example.json config.json
 
 ### 3. 启动运行
 
-根据操作系统和使用场景选择启动命令：
+项目提供**跨平台统一进程守护总管（Process Supervisor）**，支持双击交互式菜单与 CLI 命令行快速拉起，具备端口自动释放、子进程异常自愈与熔断、优雅退出和日志大小轮转：
 
 ```bash
-# 通用 npm 启动
+# 通用启动（在终端弹出交互式菜单或直接全量启动）
 npm start
 
-# Windows (推荐批处理或 PowerShell，内置端口释放与自检)
-start.bat
-# 或
-./start.ps1
+# Windows（双击 start.bat 即可弹出控制台交互菜单）
+.\start.bat
 
 # Linux / macOS
 chmod +x start.sh && ./start.sh
 ```
 
-**可选：启动微信 4.1 后台隔离伴聊 (仅限 Windows)**
+**命令行快捷参数（跳过菜单直接启动）**：
 ```bash
-# 首次使用需初始化 Python 虚拟环境与依赖
-python -m venv .venv-wechat
-.venv-wechat\Scripts\pip install pywin32 pillow
-
-# 启动微信后台守护与伴聊网关
-start-wechat-bot.bat
+npm run start:all       # 全量伴聊模式 (Node.js QQ + Python 微信4.1)
+npm run start:qq        # 仅启动 QQ 核心服务 (Port 34567, 5120)
+npm run start:wechat    # 仅启动微信后台守护服务 (Port 34568)
+npm run switch:desktop  # 调起微信后台虚拟桌面穿梭器 (Windows)
 ```
-> **提示**：启动微信伴聊服务后，可随时运行 `switch-desktop.bat` 在前台主桌面与 `WeChatBotDesktop` 隔离桌面之间快速切换查看。
+
+> **提示**：若使用微信 4.1 伴聊，首次使用需初始化 Python 虚拟环境与依赖：
+> ```bash
+> python -m venv .venv-wechat
+> .venv-wechat\Scripts\pip install pywin32 pillow wechatauto
+> ```
 
 ### 4. 访问 Web 控制台
 浏览器访问：`http://127.0.0.1:5120`
@@ -250,14 +251,16 @@ hakimi-chat/
 │   ├── web-server.mjs            # 控制台 Web 服务器与 SSE 推流
 │   ├── antigravity-discovery.mjs # Antigravity 实例与端口探针
 │   └── dsh-discovery.mjs         # DeepSeek Harness 会话与用量探针
+├── scripts/
+│   ├── launcher.mjs              # 跨平台统一进程守护总管 (生命周期/熔断自愈/日志大小轮转)
+│   ├── wechat-service.py         # 微信 4.1 独立隔离桌面后台服务 (不抢焦点)
+│   └── legacy/                   # 旧版启动脚本安全归档目录
 ├── test/                         # 单元测试与端到端自动化测试套件
 ├── config.example.json           # 配置文件模板
-├── start.bat                     # Windows 一键自检与启动脚本
-├── start.ps1                     # PowerShell 启动脚本
-├── start.sh                      # Linux/macOS 启动脚本
-├── start-wechat-bot.bat          # 微信 4.1 独立隔离桌面伴聊启动器
-├── switch-desktop.bat            # Windows 虚拟桌面快速穿梭工具
-└── package.json                  # 项目依赖与测试脚本
+├── start.bat                     # Windows 极简一键自检与启动脚本 (直调 launcher.mjs)
+├── start.sh                      # Linux/macOS 跨平台启动脚本
+├── start.ps1                     # PowerShell 快捷脚本
+└── package.json                  # 项目依赖与快捷脚本
 ```
 
 ---

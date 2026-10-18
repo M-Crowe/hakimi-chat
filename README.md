@@ -110,7 +110,19 @@ flowchart TD
 ### 1. 环境准备
 - **Node.js**：版本 `>= 22.5.0`（需支持原生 `node:sqlite`）。
 - **OneBot v11 服务端**：如 [SnowLuma](https://github.com/SnowLuma/SnowLuma)。
-- *(可选)* **Python 3.10+**：仅在使用微信后台虚拟桌面伴聊时需要（需安装 `pywin32` 和 `pillow`）。
+- *(可选)* **uv（强烈推荐 ⭐）** 或 **Python 3.10+**：
+  - 仅在使用微信后台虚拟桌面伴聊时需要。
+  - **强烈建议优先安装 [uv](https://astral.sh/uv)**（极速 Python 工具链，免手动下载配置臃肿的 Python 安装包）：
+    - **Windows** (PowerShell 直接运行):
+      ```powershell
+      powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+      ```
+      *（或通过 winget: `winget install --id=astral-sh.uv -e`）*
+    - **macOS / Linux**:
+      ```bash
+      curl -LsSf https://astral.sh/uv/install.sh | sh
+      ```
+  - **安装 uv 后无需任何手动配置**，双击 `start.bat` 会自动秒级创建 Python 3.12 虚拟环境并装齐依赖，实现完全零门槛秒起！
 
 ### 2. 安装与配置
 
@@ -199,11 +211,8 @@ npm run switch:desktop  # 调起微信后台虚拟桌面穿梭器 (Windows)
 ```
 
 > **提示**：启动脚本内置全自动依赖自检与智能容错。首次运行若检测到缺失 `node_modules` 会自动执行 `npm install` 并初始化数据库。
-> 若需使用微信 4.1 伴聊，需安装 Python 3.10+ (安装时勾选 Add to PATH)，并安装依赖：
-> ```bash
-> pip install -r requirements-wechat.txt
-> ```
-> 若当前环境未安装 Python，启动器会自动安全跳过微信伴聊子服务，并平滑降级为纯 QQ/Web 核心模式，避免崩溃。
+> - **若需使用微信 4.1 伴聊**：强烈推荐安装 `uv`（`powershell -c "irm https://astral.sh/uv/install.ps1 | iex"`），启动器会自动用 `uv` 搭建 Python 3.12 虚拟环境并装齐依赖；或在普通 Python 环境下运行 `pip install -r requirements-wechat.txt`。
+> - **若无 Python 环境**：启动器会自动安全跳过微信伴聊子服务，并平滑降级为纯 QQ/Web 核心模式，不会出现任何报错崩溃。
 
 ### 4. 访问 Web 控制台
 浏览器访问：`http://127.0.0.1:5120`

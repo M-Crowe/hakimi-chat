@@ -765,11 +765,14 @@ export class HakimiLauncher {
         } else {
           if (mode === "wechat") {
             this.logger.log("Launcher", "❌ [错误] 无法启动微信服务: 未检测到可用的 Python 运行环境或依赖安装失败。", "error");
-            this.logger.log("Launcher", "💡 请安装 Python 3.10+ (勾选 Add to PATH) 并执行: pip install -r requirements-wechat.txt", "warn");
+            this.logger.log("Launcher", "💡 推荐安装 uv (免手动装 Python): powershell -c \"irm https://astral.sh/uv/install.ps1 | iex\"", "warn");
+            this.logger.log("Launcher", "   或安装 Python 3.10+ (勾选 Add to PATH) 并执行: pip install -r requirements-wechat.txt", "warn");
             return;
           } else {
-            this.logger.log("Launcher", "⚠️ [提示] 未检测到就绪的 Python 微信运行环境，微信伴聊服务已自动跳过。", "warn");
-            this.logger.log("Launcher", "💡 系统已平滑降级为纯 QQ/Web 模式。(如需微信伴聊，安装 Python 3.10+ 后运行: pip install -r requirements-wechat.txt)", "warn");
+            this.logger.log("Launcher", "⚠️ [提示] 未检测到 Python 微信运行环境，微信伴聊子服务已自动跳过。", "warn");
+            this.logger.log("Launcher", "💡 系统已平滑降级为纯 QQ/Web 模式。", "warn");
+            this.logger.log("Launcher", "💡 强烈建议安装 uv (免手动装 Python): powershell -c \"irm https://astral.sh/uv/install.ps1 | iex\"", "warn");
+            this.logger.log("Launcher", "   安装 uv 后重新双击 start.bat，启动器将全自动完成 Python 3.12 虚拟环境搭建与拉起！", "warn");
           }
         }
       } else {

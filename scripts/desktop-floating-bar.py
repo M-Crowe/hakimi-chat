@@ -5,6 +5,15 @@ import sys
 import tempfile
 import time
 
+# 启用 DPI 感知，避免高分屏坐标错位
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(2)
+except Exception:
+    try:
+        ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
 user32 = ctypes.windll.user32
 kernel32 = ctypes.windll.kernel32
 
@@ -84,12 +93,14 @@ try:
     root.attributes("-toolwindow", True)
     root.resizable(False, False)
 
-    # 屏幕顶部居中
-    screen_w = root.winfo_screenwidth()
-    bar_w = 420
-    bar_h = 70
-    pos_x = (screen_w - bar_w) // 2
-    pos_y = 20
+    # 用系统物理分辨率计算，彻底规避缩放错位导致窗口飘出屏幕
+    screen_w = user32.GetSystemMetrics(0)
+    if screen_w <= 0:
+        screen_w = root.winfo_screenwidth()
+    bar_w = 440
+    bar_h = 74
+    pos_x = max(10, (screen_w - bar_w) // 2)
+    pos_y = 15
     root.geometry(f"{bar_w}x{bar_h}+{pos_x}+{pos_y}")
     root.configure(bg="#1E1E1E")
 
@@ -125,14 +136,30 @@ try:
         btn.config(text=f"🏠 点击立即返回主电脑屏幕 ({remaining}s)")
         root.after(1000, update_timer)
 
+    # 循环强化置顶，防止微信窗口弹起时遮挡导航条
+    def keep_on_top():
+        try:
+            root.lift()
+            root.attributes("-topmost", True)
+            root.after(1000, keep_on_top)
+        except Exception:
+            pass
+
     root.after(1000, update_timer)
+    root.after(500, keep_on_top)
     root.mainloop()
 
 except Exception as err:
-    # 如果系统没有 tkinter 或图形初始化异常，使用轻量循环进行 60s 应急兜底
-    print(f"[!] 图形导航条加载提示: {err}，启动轻量倒计时守护...")
-    for _ in range(60):
-        time.sleep(1)
-        if os.path.exists(SIGNAL_FILE):
-            break
+    # 核心降级：若系统缺失 Tkinter 或图形库初始化失败，直接调起 Windows 原生系统级 MessageBox！
+    # MB_OK | MB_ICONINFORMATION | MB_TOPMOST | MB_SETFOREGROUND = 0x00000040 | 0x00040000 | 0x00010000
+    MB_FLAGS = 0x00000040 | 0x00040000 | 0x00010000
+    user32.MessageBoxW(
+        0,
+        "【哈基米微信伴聊 - 隔离桌面穿梭助手】\n\n"
+        "您已成功进入后台隔离桌面！请在此窗口扫码登录微信。\n\n"
+        "👉 扫码完成后，请点击下方的【确定】按钮或按【回车键/ESC】，\n"
+        "即可立即安全切回您的日常电脑主屏幕。",
+        "桌面穿梭返回助手 (原生安全模式)",
+        MB_FLAGS
+    )
     do_switch_back()

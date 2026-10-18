@@ -1,6 +1,6 @@
 {
   "name": "hakimi-chat",
-  "version": "1.0.0",
+  "version": "1.10.0",
   "description": "哈基米聊天系统 (Hakimi Chat) - Antigravity IDE Companion 伴聊大脑与 QQ OneBot 智能网关",
   "type": "module",
   "main": "src/bridge-daemon.mjs",

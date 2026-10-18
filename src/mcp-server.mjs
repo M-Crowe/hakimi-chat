@@ -16,7 +16,7 @@ try {
 } catch {}
 
 const server = new Server(
-  { name: "agy-tomoko-mcp", version: "1.0.0" },
+  { name: "agy-tomoko-mcp", version: "1.10.0" },
   { capabilities: { tools: {} } }
 );
 

@@ -1,7 +1,7 @@
 # 哈基米聊天系统 (Hakimi Chat) 🐾
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Release-v1.0.0-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/Release-v1.10-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/Node.js-%3E%3D22.5.0-green.svg" alt="Node Version">
   <img src="https://img.shields.io/badge/License-MIT-orange.svg" alt="License">
   <img src="https://img.shields.io/badge/Antigravity-Companion%20Brain-purple.svg" alt="Antigravity">
@@ -138,7 +138,7 @@ hakimi-chat/
 
 ### 1. 环境准备
 - **Node.js**：版本 `>= 22.5.0`（需支持原生 `node:sqlite`）。
-- **OneBot v11 客户端**：如 [SnowLuma]([https://github.com/](https://github.com/SnowLuma/SnowLuma))。
+- **OneBot v11 客户端**：如 [SnowLuma](https://github.com/SnowLuma/SnowLuma)。
 
 ### 2. 安装与配置
 克隆仓库后安装轻量依赖：
@@ -238,7 +238,21 @@ npm test
 # 专门测试 DSH 计费与双端审计
 npm run test-dsh
 ```
-```
+
+---
+
+## 🔗 参考开源项目与致谢 (References & Acknowledgments)
+
+在设计与构建哈基米聊天系统（Hakimi Chat）的过程中，深度参考与集成了以下优秀的开源项目与核心规范，在此致以诚挚敬意与谢意：
+
+- **OneBot 协议标准**：[botuniverse/onebot-11](https://github.com/botuniverse/onebot-11) - 通用的即时通信软件机器人标准接口规范
+- **SnowLuma**：[SnowLuma/SnowLuma](https://github.com/SnowLuma/SnowLuma) - 现代高性能 OneBot v11 协议客户端与 NTQQ 桥接实现
+- **wxauto**：[cluic/wxauto](https://github.com/cluic/wxauto) - 极具创新性的 Windows 微信桌面端 UI 自动化控制库
+- **wechatauto**：[yuxiaoli/wechatauto](https://github.com/yuxiaoli/wechatauto) - 微信桌面端无感自动化接口与驱动拓展工具
+- **faster-whisper**：[SYSTRAN/faster-whisper](https://github.com/SYSTRAN/faster-whisper) - 基于 CTranslate2 的极速本地语音转换与 Whisper 推理引擎
+- **Model Context Protocol (MCP)**：[modelcontextprotocol/sdk](https://github.com/modelcontextprotocol) - 开放统一的智能体工具交互与外部上下文连接标准
+- **Google Antigravity**：[Google](https://github.com/google) - 下一代 Agentic AI 伴聊大脑与自主编码 IDE 环境
+- **DeepSeek**：[deepseek-ai](https://github.com/deepseek-ai) - DeepSeek-V3 / R1 顶级推理大模型与原生 API 架构
 
 ---
 

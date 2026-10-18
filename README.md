@@ -241,21 +241,6 @@ npm run test-dsh
 
 ---
 
-## 🔗 参考开源项目与致谢 (References & Acknowledgments)
-
-在设计与构建哈基米聊天系统（Hakimi Chat）的过程中，深度参考与集成了以下优秀的开源项目与核心规范，在此致以诚挚敬意与谢意：
-
-- **OneBot 协议标准**：[botuniverse/onebot-11](https://github.com/botuniverse/onebot-11) - 通用的即时通信软件机器人标准接口规范
-- **SnowLuma**：[SnowLuma/SnowLuma](https://github.com/SnowLuma/SnowLuma) - 现代高性能 OneBot v11 协议客户端与 NTQQ 桥接实现
-- **wxauto**：[cluic/wxauto](https://github.com/cluic/wxauto) - 极具创新性的 Windows 微信桌面端 UI 自动化控制库
-- **wechatauto**：[yuxiaoli/wechatauto](https://github.com/yuxiaoli/wechatauto) - 微信桌面端无感自动化接口与驱动拓展工具
-- **faster-whisper**：[SYSTRAN/faster-whisper](https://github.com/SYSTRAN/faster-whisper) - 基于 CTranslate2 的极速本地语音转换与 Whisper 推理引擎
-- **Model Context Protocol (MCP)**：[modelcontextprotocol/sdk](https://github.com/modelcontextprotocol) - 开放统一的智能体工具交互与外部上下文连接标准
-- **Google Antigravity**：[Google](https://github.com/google) - 下一代 Agentic AI 伴聊大脑与自主编码 IDE 环境
-- **DeepSeek**：[deepseek-ai](https://github.com/deepseek-ai) - DeepSeek-V3 / R1 顶级推理大模型与原生 API 架构
-
----
-
 ## 📜 开源协议
 
 本项目采用 [MIT License](LICENSE) 授权开源。
